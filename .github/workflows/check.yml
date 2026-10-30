@@ -1,8 +1,10 @@
 name: Checks
 on:
   pull_request:
+    paths-ignore: ['docs/**', 'README.md', 'AGENTS.md']
   push:
     branches: [main]
+    paths-ignore: ['docs/**', 'README.md', 'AGENTS.md']
 permissions:
   contents: read
 jobs:
