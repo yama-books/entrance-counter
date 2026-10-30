@@ -1,6 +1,10 @@
 # 入場人数カウンター｜ローカル実装セッションへのHANDOFF
 
 - 引継ぎ日：2026-10-30 JST
+- APP-ID：**APP-026**（[共通台帳](https://github.com/moyashimisosoup/session-deck/blob/main/docs/APP_PORTFOLIO.md)に2026-10-30登録・読戻し確認）
+- ローカル実装の作業ID案：**APP-026/IMPLEMENT-01**（新セッション開始時に採用・登録）
+- 素材保存Commit：[`ad16e174`](https://github.com/yama-books/entrance-counter/commit/ad16e174577a4ddbc44a26a8d199af584c1c0ea9)（画像・仕様19ファイルのSHA照合済み）
+- App Factory：[Issue #17](https://github.com/moyashimisosoup/app-factory/issues/17)を「本人がPublic Repo作成済み」に訂正済み（再生成禁止）
 - 状態：**ASSET_READY / IMPLEMENTATION_NOT_STARTED / HANDOFF_READY**
 - Repo（Public）：https://github.com/yama-books/entrance-counter
 - 基準ブランチ：`main`。作業開始時に必ず最新HEAD・PR・Actionsを取得すること（引継ぎの基点HEADは初期コミット`7aa4ee7c09d9fae4a9a51a708afa0591c2b97af0`、素材保存コミットで更新される）。
