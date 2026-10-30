@@ -44,3 +44,18 @@ test('CSV quotes, newlines and spreadsheet formula protection', () => {
 test('restoring older staff changes does not switch current staff', () => {
   assert.equal(currentStaff([event('new', 'staff', '2026-10-30T02:00:00Z', { staff: 'テスト新担当' }), event('old', 'staff')]), 'テスト新担当');
 });
+test('5/15/30/60-minute boundaries share the same totals and cancellation rules', () => {
+  const events = [0, 4, 5, 14, 15, 29, 30, 59].map((m, i) => event('b' + i, i % 2 ? 'akarenga' : 'entry', `2026-10-30T00:${String(m).padStart(2, '0')}:00Z`));
+  events.push(event('void', 'cancel', undefined, { target: 'b0' }));
+  for (const minutes of [5, 15, 30, 60]) {
+    const result = summary(validate(events), '2026-10-30', minutes);
+    assert.equal(result.bins.length, 1440 / minutes);
+    assert.deepEqual(result.totals, { entry: 3, akarenga: 4 });
+    assert.equal(result.bins.reduce((n, b) => n + b.entry + b.akarenga, 0), 7);
+  }
+  const five = summary(events, '2026-10-30', 5);
+  assert.equal(five.bins.find(b => b.time === '09:00').akarenga, 1);
+  assert.equal(five.bins.find(b => b.time === '09:05').entry, 1);
+  assert.equal(summary(events, '2026-10-30', 15).bins.find(b => b.time === '09:15').entry, 1);
+  assert.throws(() => summary(events, '2026-10-30', 10));
+});

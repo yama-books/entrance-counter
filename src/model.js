@@ -1,7 +1,9 @@
 export const kinds = ['entry', 'akarenga', 'staff', 'memo', 'cancel'];
 export const labels = { entry: '入場', akarenga: '赤煉瓦', staff: '担当変更', memo: '引継ぎ', cancel: '取消' };
-export const dayOf = at => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(at));
-export const timeOf = at => new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(new Date(at));
+const dayFormatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' });
+const timeFormatter = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+export const dayOf = at => dayFormatter.format(new Date(at));
+export const timeOf = at => timeFormatter.format(new Date(at));
 export function validate(events) {
   if (!Array.isArray(events) || events.length > 200000) throw Error('記録形式または件数が不正です');
   const seen = new Map(), cancelled = new Set();
@@ -23,7 +25,7 @@ export function active(events) {
   return events.filter(e => ['entry', 'akarenga'].includes(e.kind) && !cancelled.has(e.id));
 }
 export function summary(events, day, minutes = 60) {
-  if (![30, 60].includes(minutes)) throw Error('集計単位が不正です');
+  if (![5, 15, 30, 60].includes(minutes)) throw Error('集計単位が不正です');
   const bins = Array.from({ length: 1440 / minutes }, (_, i) => ({ time: `${String(Math.floor(i * minutes / 60)).padStart(2, '0')}:${String(i * minutes % 60).padStart(2, '0')}`, entry: 0, akarenga: 0 }));
   const totals = { entry: 0, akarenga: 0 }, staff = new Map();
   for (const e of active(events).filter(e => dayOf(e.at) === day)) {
