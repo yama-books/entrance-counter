@@ -4,6 +4,16 @@
 > ユーザーがミニマルな8bit受付端末の新デザインを明示採用。次の実装では [UI_MINIMAL_8BIT_20261031.md](./UI_MINIMAL_8BIT_20261031.md) と [新UIの軽量プレビュー](../assets/reference/final_ui_reference_20261031_preview.webp) を優先する。本書の以下の「採用元は元モデル1枚のみ」は2026-10-30当時の記録として保持するもので、最新デザインの採用を妨げない。  
 > 画像は640×360の確認用WebPであり、元の1672×941 PNGの完全な複製ではない。入場者（三人ピクトグラム）、時間別集計、担当変更、引継ぎ事項の4箇所をこのデザインへ寄せる。既存透過PNG・動作・設定・受付記録は削除しない。
 
+## APP-026/UI-REFINE-01 の部品
+
+- `assets/cutouts/UI-03_visitors-minimal.png`：中央が大きい三人、濃い灰色の輪郭と淡い塗り。
+- `assets/cutouts/UI-06_staff-minimal.png`：単独人物の単色ピクトグラム。
+- `assets/cutouts/UI-07_memo-minimal.png`：一枚の書類と横線3本。
+- いずれも整数のピクセルグリッドから作成した透明背景PNG。低解像度プレビューの不明な細部を追加せず、仕様にある単純な形のみを表現。AIによる再生成は行っていない。寸法・生成元は `assets/cutouts/minimal-8bit-manifest.json`。
+- `assets/fonts/reception-digits.ttf`：プロジェクト独自の数字・プラス・カンマだけの小さなピクセルフォント。日本語本文はOSの標準フォントを使い、数値はHTMLテキストのまま選択・読み上げできる。
+- 再作成はPython標準ライブラリだけで `python tools/build-ui-assets.py`。アプリ実行時の依存は増やさない。
+- 八重桜・ネコ・赤煉瓦・集計は従来PNGを再利用。旧ART-03/06/07と元モデルも保持する。
+
 
 **採用元はiPad横置きの元モデル1枚のみ**：[`assets/reference/approved_ipad_landscape.png`](../assets/reference/approved_ipad_landscape.png)。その後の色変更・別モデルは採用対象外。
 

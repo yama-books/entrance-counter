@@ -22,12 +22,11 @@ function scheduleRender(kind) {
 function updateNumber(kind, total) {
   const el = $(`#${kind}-total`), before = Number(el.dataset.total || 0);
   el.textContent = total.toLocaleString('ja-JP'); el.dataset.total = total;
+  el.classList.toggle('compact', total >= 1000);
+  el.classList.toggle('extra-compact', total >= 10000);
   if (total <= before || !countMotions.has(kind) || reducedMotion.matches) return;
   el.getAnimations().forEach(animation => animation.cancel());
-  el.animate([{ transform: 'translateY(.32em)', opacity: .4 }, { transform: 'translateY(0)', opacity: 1 }], { duration: 220, easing: 'ease-out' });
-  const parent = el.closest('.number'); parent.querySelector('.count-tick')?.remove();
-  const tick = node('span', `+${total - before}`, 'count-tick'); tick.setAttribute('aria-hidden', 'true'); parent.append(tick);
-  tick.animate([{ transform: 'translateY(8px)', opacity: 1 }, { transform: 'translateY(-25px)', opacity: 0 }], { duration: 450, easing: 'ease-out' }).finished.then(() => tick.remove()).catch(() => tick.remove());
+  el.animate([{ transform: 'translateY(6px)', opacity: .6 }, { transform: 'translateY(0)', opacity: 1 }], { duration: 160, easing: 'ease-out' });
 }
 function render() {
   today = dayOf(new Date());
@@ -38,9 +37,11 @@ function render() {
     updateNumber(kind, data.totals[kind]);
     $(`[data-undo="${kind}"]`).disabled = !active(events).some(e => e.kind === kind && dayOf(e.at) === today);
   }
-  const max = Math.max(1, ...data.bins.map(b => b[chartKind]));
-  $('#chart-description').textContent = `最大 ${max} / ${interval}分`;
+  const max = Math.max(4, Math.ceil(Math.max(0, ...data.bins.map(b => b[chartKind])) / 4) * 4);
+  $('#chart-description').textContent = `${labels[chartKind]} / ${interval}分`;
+  $('#chart-axis').replaceChildren(...[4, 3, 2, 1, 0].map(step => node('span', max * step / 4)));
   $('#chart').classList.toggle('fine-interval', interval <= 15);
+  $('#chart').dataset.series = chartKind;
   $('#chart').replaceChildren(...data.bins.map(b => {
     const el = node('div', '', 'bar'); el.style.height = `${b[chartKind] / max * 100}%`; el.title = `${b.time} ${labels[chartKind]} ${b[chartKind]}`; return el;
   }));

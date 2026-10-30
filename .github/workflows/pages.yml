@@ -31,9 +31,10 @@ jobs:
       - name: Prepare public app only
         run: |
           mkdir -p _site/assets
-          cp index.html styles.css _site/
+          cp index.html styles.css minimal.css _site/
           cp -r src _site/
           cp -r assets/cutouts _site/assets/
+          cp -r assets/fonts _site/assets/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -8,7 +8,7 @@ const server = createServer(async (req, res) => {
   try {
     const path = resolve(root, '.' + decodeURIComponent(new URL(req.url, 'http://localhost').pathname.replace(/\/$/, '/index.html')));
     if (!path.startsWith(root + sep)) throw Error('path');
-    res.setHeader('Content-Type', ({ '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png' })[extname(path)] || 'application/octet-stream');
+    res.setHeader('Content-Type', ({ '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.ttf': 'font/ttf' })[extname(path)] || 'application/octet-stream');
     res.end(await readFile(path));
   } catch { res.writeHead(404); res.end(); }
 });
@@ -118,7 +118,7 @@ try {
   const hit = await touch.locator('[data-kind="entry"]').boundingBox();
   await touch.mouse.move(hit.x + hit.width / 2, hit.y + hit.height / 2); await touch.mouse.down();
   await touch.waitForFunction(() => document.querySelector('#entry-total').textContent === '1');
-  assert.ok(await touch.evaluate(() => window.numberMotions.some(frames => frames[0].transform === 'translateY(.32em)' && frames[1].transform === 'translateY(0)')));
+  assert.ok(await touch.evaluate(() => window.numberMotions.some(frames => frames[0].transform === 'translateY(6px)' && frames[1].transform === 'translateY(0)')));
   await touch.mouse.up(); await touch.waitForTimeout(150);
   assert.equal(await touch.locator('#entry-total').textContent(), '1');
   await touch.locator('[data-kind="entry"]').focus(); await touch.keyboard.press('Enter');
@@ -164,7 +164,7 @@ try {
   // Count button sinks on contact and rises after release.
   const countButton = page.locator('[data-kind="entry"]'), box = await countButton.boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
-  assert.ok(await countButton.evaluate(el => el.classList.contains('pressed') && getComputedStyle(el).transform !== 'none'));
+  assert.ok(await countButton.evaluate(el => el.classList.contains('pressed') && getComputedStyle(el).transform === 'matrix(1, 0, 0, 1, 0, 2)'));
   await page.mouse.up(); await page.waitForFunction(() => !document.querySelector('[data-kind="entry"]').classList.contains('pressed'));
   // Staff call: explicit staff name, settings-only passcode, and fixed GAS endpoint.
   const calls=[];let callReply={ok:true};
@@ -218,9 +218,10 @@ try {
   console.log('PASS fixed GAS URL, explicit staff name, Settings-only password and failure retention');
   // Theme picker: five palettes, choice persists on the device.
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'ivory-brick');
-  assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), 'rgb(255, 249, 237)');
-  assert.equal(await page.locator('[data-kind="akarenga"]').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(184, 94, 78)');
-  assert.ok((await page.locator('.entry > img').evaluate(el => getComputedStyle(el).filter)).includes('grayscale(1)'));
+  assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), 'rgb(250, 250, 246)');
+  assert.equal(await page.locator('[data-kind="akarenga"]').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(183, 121, 112)');
+  assert.ok((await page.locator('.entry > img').getAttribute('src')).includes('UI-03_visitors-minimal.png'));
+  assert.equal(await page.locator('.entry > img').evaluate(el => getComputedStyle(el).filter), 'none');
   assert.ok((await page.locator('.cat').evaluate(el => getComputedStyle(el).filter)).includes('saturate(0.25)'));
   assert.ok((await page.locator('.akarenga > img').evaluate(el => getComputedStyle(el).filter)).includes('hue-rotate(16deg)'));
   await page.locator('[data-open="theme-dialog"]').click();
@@ -239,6 +240,26 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'ivory-brick');
   }
   console.log('PASS approved ivory/brick palette, matching people/cat/brick artwork, five choices, persistence and legacy fallback');
+  const digitFont = await page.evaluate(async () => {
+    const faces = await document.fonts.load('700 120px "Reception Digits"', '0123456789,+');
+    return faces.length === 1 && faces[0].status === 'loaded';
+  });
+  assert.ok(digitFont, 'Local pixel digit font must decode successfully');
+  assert.ok((await page.locator('[data-open="staff-dialog"] img').getAttribute('src')).includes('UI-06_staff-minimal.png'));
+  assert.ok((await page.locator('[data-open="memo-dialog"] img').getAttribute('src')).includes('UI-07_memo-minimal.png'));
+  for (const selector of ['body', '.counter', '.counter.akarenga', '.count', '.bar']) {
+    assert.equal(await page.locator(selector).first().evaluate(el => getComputedStyle(el).backgroundImage), 'none');
+  }
+  assert.equal(await page.locator('.counter').first().evaluate(el => getComputedStyle(el).borderTopWidth), '1px');
+  assert.ok(await page.locator('.counter').first().evaluate(el => parseFloat(getComputedStyle(el).borderRadius) <= 2));
+  await page.locator('[data-chart="akarenga"]').click();
+  assert.equal(await page.locator('.bar').first().evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(183, 121, 112)');
+  await page.locator('[data-chart="entry"]').click();
+  assert.equal(await page.locator('.bar').first().evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(120, 150, 138)');
+  assert.equal(await page.locator('#chart-axis span').count(), 5);
+  assert.equal(await page.locator('#chart-axis span').last().textContent(), '0');
+  assert.equal(await page.locator('.count-tick').count(), 0);
+  console.log('PASS minimal UI: three new PNG pictograms, decoded pixel digits, thin square frames, flat surfaces, single-color chart/axis and 2px press');
   await page.locator('#interval').selectOption('5');
   for (const [width, height] of [[1194,834],[1024,768],[768,1024],[390,844]]) {
     await page.setViewportSize({ width, height });
