@@ -1,5 +1,7 @@
 import { labels, dayOf, timeOf, active, currentStaff, summary, csv, validate } from './model.js';
 import { openStore, read, write, readShift, writeShift } from './storage.js';
+import { scheduleFor } from './schedule.js';
+import { themes, themeKey, savedTheme, applyTheme } from './themes.js';
 const $ = selector => document.querySelector(selector);
 let db, events = [], chartKind = 'entry', historyLimit = 100, queue = Promise.resolve(), pending = 0;
 let selectedDay = dayOf(new Date()), today = selectedDay;
@@ -125,7 +127,8 @@ document.querySelectorAll('[data-undo]').forEach(button => button.addEventListen
 }));
 document.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => {
   const dialog = document.getElementById(button.dataset.open); dialog.showModal(); render();
-  if (dialog.id === 'call-dialog') showCallSettings();
+  if (dialog.id === 'call-dialog') { showCallSchedule(); showCallSettings(); }
+  if (dialog.id === 'theme-dialog') showThemes();
   if (dialog.id === 'shift-dialog') showShift().catch(e => { $('#shift-status').textContent = `読込失敗：${e.message}`; });
 }));
 document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
@@ -177,6 +180,38 @@ const callSettingsKey = 'entrance-counter-call';
 const callUrlPattern = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
 function callSettings() {
   try { const value = JSON.parse(localStorage.getItem(callSettingsKey) || 'null'); return value && callUrlPattern.test(value.url) && value.key ? value : null; } catch { return null; }
+}
+applyTheme(savedTheme());
+function showThemes() {
+  const current = document.documentElement.dataset.theme;
+  $('#theme-options').replaceChildren(...themes.map(theme => {
+    const button = node('button', '', 'theme-option'); button.type = 'button'; button.dataset.theme = theme.id;
+    button.setAttribute('aria-pressed', String(theme.id === current));
+    const swatches = node('span', '', 'theme-swatches'); swatches.setAttribute('aria-hidden', 'true');
+    theme.colors.forEach(color => { const chip = document.createElement('i'); chip.style.background = color; swatches.append(chip); });
+    const label = node('span', [theme.no, theme.name].filter(Boolean).join(' ')); label.append(node('small', theme.note));
+    button.append(swatches, label, node('span', '選択中', 'theme-check'));
+    button.addEventListener('click', () => {
+      applyTheme(theme.id);
+      try { localStorage.setItem(themeKey, theme.id); } catch { /* Theme still applies for this visit. */ }
+      showThemes();
+    });
+    return button;
+  }));
+}
+function showCallSchedule() {
+  const schedule = scheduleFor(new Date());
+  $('#call-schedule').hidden = !schedule;
+  if (!schedule) return;
+  $('#call-schedule-day').textContent = schedule.label;
+  $('#call-schedule-list').replaceChildren(...schedule.items.map(item => {
+    const row = node('li', '', item.current ? 'current' : '');
+    row.append(node('span', `${item.from}～${item.to}`, 'call-time'));
+    const text = node('span', '', 'call-plan'); item.lines.forEach(line => text.append(node('span', line)));
+    row.append(text);
+    if (item.current) row.append(node('span', 'いま', 'call-now'));
+    return row;
+  }));
 }
 function showCallSettings() {
   const settings = callSettings();

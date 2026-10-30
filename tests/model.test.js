@@ -59,3 +59,15 @@ test('5/15/30/60-minute boundaries share the same totals and cancellation rules'
   assert.equal(summary(events, '2026-10-30', 15).bins.find(b => b.time === '09:15').entry, 1);
   assert.throws(() => summary(events, '2026-10-30', 10));
 });
+test('staff call schedule follows the JST date and marks the current slot', async () => {
+  const { scheduleFor } = await import('../src/schedule.js');
+  assert.equal(scheduleFor('2026-10-30T03:00:00Z'), null);
+  const sat = scheduleFor('2026-10-31T02:10:00Z'); // 11:10 JST
+  assert.equal(sat.label, '10/31（土）');
+  assert.deepEqual(sat.items.map(i => [i.from, i.to, i.current]), [['11:00', '11:30', true], ['11:30', '12:00', false], ['13:55', '15:15', false]]);
+  assert.equal(scheduleFor('2026-10-31T02:30:00Z').items[1].current, true); // 11:30 JST belongs to the next slot
+  const sun = scheduleFor('2026-10-31T15:00:00Z'); // 00:00 JST on 11/1
+  assert.equal(sun.label, '11/1（日）');
+  assert.deepEqual(sun.items[1].lines, ['手話同好会公演（音楽室A）', '書道部実演']);
+  assert.ok(sun.items.every(i => !i.current));
+});
