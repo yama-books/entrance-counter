@@ -19,6 +19,8 @@ iPad横置きの受付で利用する、入場人数と「赤煉瓦」を個別�
 
 ## デザイン・画像
 
+- [最新確定：ミニマル8bitのデザイン仕様と参照プレビュー](docs/UI_MINIMAL_8BIT_20261031.md)（画面の実装は別工程）
+
 - [採用モデル画像（iPad横置き）](assets/reference/approved_ipad_landscape.png)
 - [画像の切り出し一覧](assets/previews/entrance_counter_cutouts_preview.png)
 - [透過PNG一覧](assets/cutouts/)
