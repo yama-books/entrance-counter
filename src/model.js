@@ -35,7 +35,7 @@ export function summary(events, day, minutes = 60) {
   }
   return { totals, bins, staff: [...staff].map(([name, counts]) => ({ name, ...counts })) };
 }
-export const currentStaff = events => events.findLast(e => e.kind === 'staff')?.staff || '未設定';
+export const currentStaff = events => events.filter(e => e.kind === 'staff').reduce((latest, e) => !latest || Date.parse(e.at) >= Date.parse(latest.at) ? e : latest, null)?.staff || '未設定';
 export function mergeEvents(existing, incoming) {
   validate(incoming);
   const map = new Map(existing.map(e => [e.id, e]));

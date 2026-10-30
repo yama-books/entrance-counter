@@ -41,3 +41,6 @@ test('CSV quotes, newlines and spreadsheet formula protection', () => {
   assert.ok(output.includes('"a""b"'));
   assert.ok(output.includes('"a\nb"'));
 });
+test('restoring older staff changes does not switch current staff', () => {
+  assert.equal(currentStaff([event('new', 'staff', '2026-10-30T02:00:00Z', { staff: 'テスト新担当' }), event('old', 'staff')]), 'テスト新担当');
+});

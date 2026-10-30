@@ -1,4 +1,4 @@
-import { validate, mergeEvents } from './model.js';
+import { validate, mergeEvents, currentStaff } from './model.js';
 const dbName = 'entrance-counter-v1';
 export function openStore() {
   return new Promise((resolve, reject) => {
@@ -31,7 +31,7 @@ export function write(db, operation) {
         else {
           const { type, ...event } = operation;
           // Staff is resolved inside this transaction, including changes from other tabs.
-          event.staff = events.findLast(e => e.kind === 'staff')?.staff || '未設定';
+          event.staff = currentStaff(events);
           if (event.kind === 'staff') event.staff = operation.name;
           delete event.name;
           next = validate([...events, event]);
