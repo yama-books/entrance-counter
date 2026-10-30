@@ -196,6 +196,7 @@ try {
   });
   await page.waitForFunction(() => document.querySelector('#call-status').textContent.includes('取り込みました'));
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('entrance-counter-call')).key), 'imported-test-pass');
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('book-flea-register-call')).key), 'imported-test-pass');
   const dl = page.waitForEvent('download');
   await page.locator('#call-settings').evaluate(el => el.open = true);
   await page.locator('#call-config-export').click();
