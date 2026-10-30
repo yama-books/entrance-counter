@@ -127,7 +127,8 @@ document.querySelectorAll('[data-undo]').forEach(button => button.addEventListen
 }));
 document.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => {
   const dialog = document.getElementById(button.dataset.open); dialog.showModal(); render();
-  if (dialog.id === 'call-dialog') { showCallSchedule(); showCallSettings(); }
+  if (dialog.id === 'call-dialog') showCallSchedule();
+  if (dialog.id === 'settings-dialog') showCallSettings();
   if (dialog.id === 'theme-dialog') showThemes();
   if (dialog.id === 'shift-dialog') showShift().catch(e => { $('#shift-status').textContent = `読込失敗：${e.message}`; });
 }));
@@ -225,26 +226,25 @@ function showCallSchedule() {
 }
 function showCallSettings() {
   const settings = callSettings();
-  $('#call-key').value = settings?.key || '';
-  $('#call-settings').open = !settings;
-  $('#call-status').textContent = settings ? '' : '先に合言葉を設定してください。';
+  $('#call-key').value = '';
+  $('#call-settings-status').textContent = settings ? '合言葉は設定済みです。変更する場合は新しい合言葉を入力してください。' : '合言葉がまだ設定されていません。';
 }
 $('#call-settings-form').addEventListener('submit', event => {
   event.preventDefault();
   const key = $('#call-key').value;
   if (!key.trim() || key.length > 200) {
-    $('#call-status').textContent = '合言葉を1〜200文字で入力してください。'; return;
+    $('#call-settings-status').textContent = '合言葉を1〜200文字で入力してください。'; return;
   }
   try { localStorage.setItem(callSettingsKey, JSON.stringify({ key })); }
-  catch { $('#call-status').textContent = '合言葉を保存できませんでした。'; return; }
-  $('#call-settings').open = false;
-  $('#call-status').textContent = 'この端末に合言葉を保存しました。';
+  catch { $('#call-settings-status').textContent = '合言葉を保存できませんでした。'; return; }
+  $('#call-key').value = '';
+  $('#call-settings-status').textContent = 'この端末に合言葉を保存しました。';
 });
 $('#call-form').addEventListener('submit', async event => {
   event.preventDefault();
   const text = $('#call-input').value.trim(), settings = callSettings(), button = event.target.querySelector('button');
   if (!text) return;
-  if (!settings) { $('#call-settings').open = true; $('#call-status').textContent = '先に合言葉を設定してください。'; return; }
+  if (!settings) { $('#call-status').textContent = '合言葉が未設定です。画面下の「設定」→「メール通知」で保存してください。要件は残っています。'; return; }
   button.disabled = true; $('#call-status').textContent = '送信中…';
   const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 20000);
   try {
