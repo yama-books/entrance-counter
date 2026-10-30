@@ -135,7 +135,8 @@ try {
   const shiftImage = await readFile('assets/cutouts/ART-01_yaezakura.png');
   await page.locator('[data-open="shift-dialog"]').click();
   await page.locator('#shift-file').setInputFiles({ name: 'test-shift.png', mimeType: 'image/png', buffer: shiftImage });
-  await page.waitForFunction(() => document.querySelector('#shift-status').textContent.startsWith('test-shift.png'));
+  await page.waitForFunction(() => /^(test-shift.png|保存失敗)/.test(document.querySelector('#shift-status').textContent));
+  assert.ok((await page.locator('#shift-status').textContent()).startsWith('test-shift.png'), await page.locator('#shift-status').textContent());
   await page.waitForFunction(() => document.querySelector('#shift-preview').naturalWidth > 0);
   await page.reload(); await page.waitForFunction(() => !document.querySelector('[data-kind]').disabled);
   await page.locator('[data-open="shift-dialog"]').click();

@@ -48,17 +48,22 @@ export function readShift(db) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('state', 'readonly');
     const request = tx.objectStore('state').get('shift-image');
-    tx.oncomplete = () => resolve(request.result || null);
-    tx.onerror = () => reject(tx.error);
+    tx.oncomplete = () => {
+      const image = request.result;
+      // Images are stored as bytes because WebKit can reject Blob/File values in IndexedDB.
+      resolve(image ? { name: image.name, at: image.at, blob: image.blob || new Blob([image.bytes], { type: image.type }) } : null);
+    };
+    tx.onerror = () => reject(tx.error || Error('シフト表を読み込めませんでした'));
     tx.onabort = () => reject(tx.error || Error('シフト表を読み込めませんでした'));
   });
 }
-export function writeShift(db, image) {
+export async function writeShift(db, image) {
+  const bytes = await image.blob.arrayBuffer();
   return new Promise((resolve, reject) => {
     const tx = db.transaction('state', 'readwrite');
-    tx.objectStore('state').put(image, 'shift-image');
+    tx.objectStore('state').put({ bytes, type: image.blob.type, name: image.name, at: image.at }, 'shift-image');
     tx.oncomplete = () => resolve(image);
-    tx.onerror = () => reject(tx.error);
+    tx.onerror = () => reject(tx.error || Error('シフト表を保存できませんでした'));
     tx.onabort = () => reject(tx.error || Error('シフト表を保存できませんでした'));
   });
 }

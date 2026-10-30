@@ -167,7 +167,7 @@ $('#shift-file').addEventListener('change', async event => {
     if (image.naturalWidth * image.naturalHeight > 40000000) throw Error('画像は4,000万画素以下にしてください');
     await writeShift(db, { blob: file, name: file.name, at: new Date().toISOString() });
     await showShift(); channel?.postMessage('shift-updated'); status('シフト表を端末内に保存しました');
-  } catch (e) { $('#shift-status').textContent = `保存失敗：${e.message}。保存済みの画像は保持しています。`; }
+  } catch (e) { $('#shift-status').textContent = `保存失敗：${e?.message || '不明なエラー'}。保存済みの画像は保持しています。`; }
   finally { if (candidateUrl) URL.revokeObjectURL(candidateUrl); event.target.disabled = false; event.target.value = ''; }
 });
 function download(text, extension, suffix) {
