@@ -183,8 +183,9 @@ function validateCallConfig(data) {
   if (!data || data.format !== callConfigFormat || data.version !== 1 || typeof data.url !== 'string' || !callUrlPattern.test(data.url) || typeof data.key !== 'string' || !data.key.trim() || data.key.length > 200) throw Error('対応する送信設定ファイルではありません');
   return { url: data.url, key: data.key };
 }
-function saveCallConfig(config) {
+function saveCallConfig(config, shareBoth = false) {
   localStorage.setItem(callSettingsKey, JSON.stringify(config));
+  if (shareBoth) localStorage.setItem('book-flea-register-call', JSON.stringify(config));
   $('#call-url').value = config.url; $('#call-key').value = config.key;
   $('#call-settings').open = false;
 }
@@ -242,7 +243,7 @@ $('#call-config-import').addEventListener('change', async event => {
   try {
     if (file.size > 8192) throw Error('ファイルが大きすぎます');
     const config = validateCallConfig(JSON.parse(await file.text()));
-    saveCallConfig(config);
+    saveCallConfig(config, true);
     $('#call-status').textContent = '共通送信設定をこの端末に取り込みました。';
   } catch (error) { $('#call-status').textContent = `設定の読込に失敗：${error.message}`; }
   finally { event.target.value = ''; }
