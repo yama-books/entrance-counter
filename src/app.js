@@ -189,7 +189,7 @@ function showThemes() {
     button.setAttribute('aria-pressed', String(theme.id === current));
     const swatches = node('span', '', 'theme-swatches'); swatches.setAttribute('aria-hidden', 'true');
     theme.colors.forEach(color => { const chip = document.createElement('i'); chip.style.background = color; swatches.append(chip); });
-    const label = node('span', `${theme.no} ${theme.name}`); label.append(node('small', theme.note));
+    const label = node('span', [theme.no, theme.name].filter(Boolean).join(' ')); label.append(node('small', theme.note));
     button.append(swatches, label, node('span', '選択中', 'theme-check'));
     button.addEventListener('click', () => {
       applyTheme(theme.id);

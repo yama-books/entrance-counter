@@ -196,20 +196,28 @@ try {
   await page.locator('#call-dialog [data-close]').click(); await page.unroute('https://script.google.com/**');
   console.log('PASS count button sinks on contact; staff call settings, mocked delivery, failure keeps request');
   // Theme picker: five palettes, choice persists on the device.
-  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'raspberry-lemon');
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'ivory-brick');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), 'rgb(255, 249, 237)');
+  assert.equal(await page.locator('[data-kind="akarenga"]').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(184, 94, 78)');
+  assert.ok((await page.locator('.entry > img').evaluate(el => getComputedStyle(el).filter)).includes('grayscale(1)'));
+  assert.ok((await page.locator('.cat').evaluate(el => getComputedStyle(el).filter)).includes('saturate(0.25)'));
+  assert.ok((await page.locator('.akarenga > img').evaluate(el => getComputedStyle(el).filter)).includes('hue-rotate(16deg)'));
   await page.locator('[data-open="theme-dialog"]').click();
   assert.equal(await page.locator('.theme-option').count(), 5);
   const entryFace = () => page.locator('[data-kind="entry"]').evaluate(el => getComputedStyle(el).backgroundColor);
   const before = await entryFace();
   await page.locator('.theme-option[data-theme="nordic-lake"]').click();
   assert.equal(await page.locator('.theme-option[aria-pressed="true"]').getAttribute('data-theme'), 'nordic-lake');
+  assert.equal(await page.locator('.entry > img').evaluate(el => getComputedStyle(el).filter), 'none');
   assert.notEqual(await entryFace(), before);
   await page.reload(); await page.waitForFunction(() => !document.querySelector('[data-kind]').disabled);
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'nordic-lake');
-  await page.evaluate(() => localStorage.setItem('entrance-counter-theme', 'unknown')); await page.reload();
-  await page.waitForFunction(() => !document.querySelector('[data-kind]').disabled);
-  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'raspberry-lemon');
-  console.log('PASS theme picker: five palettes, persisted choice, unknown value falls back');
+  for (const value of ['unknown', 'raspberry-lemon']) {
+    await page.evaluate(value => localStorage.setItem('entrance-counter-theme', value), value); await page.reload();
+    await page.waitForFunction(() => !document.querySelector('[data-kind]').disabled);
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'ivory-brick');
+  }
+  console.log('PASS approved ivory/brick palette, matching people/cat/brick artwork, five choices, persistence and legacy fallback');
   await page.locator('#interval').selectOption('5');
   for (const [width, height] of [[1194,834],[1024,768],[768,1024],[390,844]]) {
     await page.setViewportSize({ width, height });
