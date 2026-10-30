@@ -211,4 +211,18 @@ try {
   assert.equal(await page.locator('.count').first().evaluate(el => getComputedStyle(el).animationName), 'none');
   assert.deepEqual(errors, []);
   console.log('PASS responsive layout, reduced motion, no page errors');
+  const scheduleContext = await browser.newContext({ viewport: { width: 1194, height: 834 } });
+  const schedulePage = await scheduleContext.newPage();
+  await schedulePage.clock.setFixedTime(new Date('2026-10-31T11:10:00+09:00'));
+  await schedulePage.goto(url); await schedulePage.waitForFunction(() => !document.querySelector('[data-kind]').disabled);
+  await schedulePage.locator('#call-top').click();
+  assert.equal(await schedulePage.locator('#call-schedule-day').textContent(), '10/31（土）');
+  assert.deepEqual(await schedulePage.locator('#call-schedule-list .call-time').allTextContents(), ['11:00～11:30', '11:30～12:00', '13:55～15:15']);
+  assert.ok((await schedulePage.locator('#call-schedule-list li.current').textContent()).includes('手話同好会公演（音楽室A）'));
+  await schedulePage.screenshot({ path: 'test-results/call-schedule.png' });
+  await schedulePage.clock.setFixedTime(new Date('2026-10-30T12:00:00+09:00'));
+  await schedulePage.locator('#call-dialog [data-close]').click(); await schedulePage.locator('#call-top').click();
+  assert.ok(await schedulePage.locator('#call-schedule').isHidden());
+  await scheduleContext.close();
+  console.log('PASS staff call schedule by JST date with current slot');
 } finally { await browser.close(); server.close(); }
