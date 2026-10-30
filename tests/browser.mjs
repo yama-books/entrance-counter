@@ -161,6 +161,40 @@ try {
   assert.equal(saved.name, 'replacement.png'); assert.equal(saved.count, 29); assert.equal(saved.bytes, shiftImage.length);
   await page.locator('#shift-dialog [data-close]').click();
   console.log('PASS local shift image upload/reload/replacement, invalid image and failed save preserve image, event log unchanged');
+  // Count button sinks on contact and rises after release.
+  const countButton = page.locator('[data-kind="entry"]'), box = await countButton.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+  assert.ok(await countButton.evaluate(el => el.classList.contains('pressed') && getComputedStyle(el).transform !== 'none'));
+  await page.mouse.up(); await page.waitForFunction(() => !document.querySelector('[data-kind="entry"]').classList.contains('pressed'));
+  // Staff call: settings validation, mocked Apps Script delivery, failure keeps the request text.
+  const callUrl = 'https://script.google.com/macros/s/TEST_DEPLOYMENT/exec', calls = [];
+  let callReply = { ok: true };
+  await page.route('https://script.google.com/**', async route => {
+    calls.push({ method: route.request().method(), type: route.request().headers()['content-type'], body: JSON.parse(route.request().postData()) });
+    await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(callReply) });
+  });
+  await page.locator('#call-top').click();
+  assert.equal(await page.locator('#call-dialog h2').textContent(), '要件を入力');
+  assert.ok(await page.locator('#call-settings').evaluate(el => el.open));
+  await page.locator('#call-input').fill('受付に来てください');
+  await page.locator('#call-form button').click();
+  await page.waitForFunction(() => document.querySelector('#call-status').textContent.includes('先に送信設定'));
+  await page.locator('#call-url').fill('https://example.com/exec'); await page.locator('#call-key').fill('test-pass');
+  await page.locator('#call-settings-form button').click();
+  await page.waitForFunction(() => document.querySelector('#call-status').textContent.includes('形式で入力'));
+  await page.locator('#call-url').fill(callUrl); await page.locator('#call-settings-form button').click();
+  await page.waitForFunction(() => document.querySelector('#call-status').textContent.includes('保存しました'));
+  await page.locator('#call-form button').click();
+  await page.waitForFunction(() => document.querySelector('#call-status').textContent.startsWith('送信しました'));
+  assert.equal(calls.length, 1); assert.equal(calls[0].method, 'POST'); assert.match(calls[0].type, /^text\/plain/);
+  assert.equal(calls[0].body.key, 'test-pass'); assert.equal(calls[0].body.text, '受付に来てください'); assert.equal(calls[0].body.staff, 'テスト担当B');
+  assert.equal(await page.locator('#call-input').inputValue(), '');
+  callReply = { ok: false, error: '合言葉が違います' };
+  await page.locator('#call-input').fill('二回目'); await page.locator('#call-form button').click();
+  await page.waitForFunction(() => document.querySelector('#call-status').textContent.includes('合言葉が違います'));
+  assert.equal(await page.locator('#call-input').inputValue(), '二回目');
+  await page.locator('#call-dialog [data-close]').click(); await page.unroute('https://script.google.com/**');
+  console.log('PASS count button sinks on contact; staff call settings, mocked delivery, failure keeps request');
   await page.locator('#interval').selectOption('5');
   for (const [width, height] of [[1194,834],[1024,768],[768,1024],[390,844]]) {
     await page.setViewportSize({ width, height });
@@ -168,6 +202,7 @@ try {
     if (width >= 1024) {
       assert.ok((await page.locator('[data-kind="entry"]').boundingBox()).y + (await page.locator('[data-kind="entry"]').boundingBox()).height < height);
       const menu = await page.locator('[data-open="shift-dialog"]').boundingBox(); assert.ok(menu.y + menu.height < height);
+      const call = await page.locator('#call-top').boundingBox(); assert.ok(call.x + call.width <= width && call.y >= 0);
     }
   }
   await page.setViewportSize({ width:1194,height:834 });
