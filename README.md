@@ -2,7 +2,11 @@
 
 iPad横置きの受付で利用する、入場人数と「赤煉瓦」を個別に記録・集計する軽量Webアプリ。
 
-**状態（2026-10-30 JST）: 画面設計・画像素材保存済み / アプリ本体は未実装 / Pages配信・実機確認は未実施。**
+**状態（2026-10-30 JST）: 初期アプリ実装。配信状況はCHECKPOINTを参照 / iPad Safari実機検収は未実施。**
+
+- [アプリを開く](https://yama-books.github.io/entrance-counter/)
+- [実装CHECKPOINT](docs/checkpoints/IMPLEMENT_01_20261030.md)
+- [検証方法・保存仕様・実機での確認事項](docs/VALIDATION.md)
 
 ## 正本・実装の入口
 
@@ -20,7 +24,7 @@ iPad横置きの受付で利用する、入場人数と「赤煉瓦」を個別�
 - [切り出し情報（座標・SHA256）](assets/cutouts/manifest.json)
 - [素材一式ZIP](assets/packages/entrance_counter_cutouts.zip)
 
-## 動作方針（実装予定）
+## 動作
 
 - 大きな「入場 +1」「赤煉瓦 +1」で別々に加算し、日時・担当を記録。
 - 本日合計、30分・1時間単位の集計、履歴、直前の誤入力の取消。
@@ -30,4 +34,6 @@ iPad横置きの受付で利用する、入場人数と「赤煉瓦」を個別�
 
 本リポジトリはPublic。担当者名や実際の来場履歴・引継ぎ事項等の運用データはGitHubにアップロードしない。
 
-> 2026-10-30時点でユーザーはPages設定でGitHub Actionsを選択したと報告。配信ワークフロー追加・Pages成功は別工程。
+## 開発
+
+Node.js 24で `npm ci`、`npm test`、`npm run check`。ブラウザ試験は `docs/VALIDATION.md` を参照。フレームワーク・ビルド工程なしのHTML/CSS/JavaScriptで動作し、記録は端末のIndexedDBに保存する。担当者は初期状態で「未設定」。定期的にJSONを書き出して保管する。
