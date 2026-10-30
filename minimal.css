@@ -143,9 +143,9 @@ input, textarea { border: 1px solid var(--frame); }
 .theme-option[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -2px; }
 .theme-swatches i:first-child, .theme-swatches i:last-child { border-radius: 0; }
 @media (min-width: 1400px) {
-  .counter { padding: 32px 28px 20px; }
+  .counter, .counter.akarenga { padding: 32px 28px 20px; }
   .counter > img { width: 105px; height: 80px; }
-  .count { min-height: 100px; font-size: 64px; }
+  .count, .akarenga .count { min-height: 100px; font-size: 64px; }
   .chart-panel { min-height: 0; }
 }
 @media (max-width: 1100px) {
@@ -158,9 +158,9 @@ input, textarea { border: 1px solid var(--frame); }
   #staff-top, #call-top { padding: 6px 9px; font-size: 13px; }
   main { gap: 18px; }
   .counters { gap: 14px; }
-  .counter { padding: 18px 14px 12px; }
+  .counter, .counter.akarenga { padding: 18px 14px 12px; }
   .counter > img { width: 74px; height: 60px; }
-  .count { min-height: 78px; font-size: 50px; }
+  .count, .akarenga .count { min-height: 78px; font-size: 50px; }
   .actions { gap: 10px; }
   .actions button { gap: 8px; font-size: 15px; min-height: 58px; }
   .chart-panel, .history-panel { padding: 14px 12px; }
@@ -193,7 +193,7 @@ input, textarea { border: 1px solid var(--frame); }
   .cat { display: none; }
   #call-top, #staff-top { margin: 0; min-height: 44px; }
   .counters { gap: 10px; min-height: 350px; }
-  .counter { padding: 18px 10px 10px; }
+  .counter, .counter.akarenga { padding: 18px 10px 10px; }
   .counter > img { width: 62px; height: 48px; }
   .counter h2 { font-size: 16px; }
   .number { min-height: 90px; margin: 10px 0; gap: 3px; }
@@ -201,7 +201,7 @@ input, textarea { border: 1px solid var(--frame); }
   .number > span { font-size: 22px; margin-top: 24px; }
   .number strong.compact { font-size: 48px; }
   .number strong.extra-compact { font-size: 36px; }
-  .count { min-height: 68px; font-size: 42px; }
+  .count, .akarenga .count { min-height: 68px; font-size: 42px; }
   .count span { font-size: 23px; }
   .undo { gap: 4px; padding: 5px 4px; font-size: 10px; white-space: normal; }
   .undo-icon { width: 18px; height: 9px; }
