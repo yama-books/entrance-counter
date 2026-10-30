@@ -1,0 +1,166 @@
+{
+  "source_file": "a_wide_clean_flat_soft_pastel_ui_mockup_in_a_pix.png",
+  "source_size": [
+    1672,
+    941
+  ],
+  "source_sha256": "a4a89bac3917ee1e54c76ab2498966610c97843dcf747318cb64a36c207d9dc8",
+  "notes": "Source pixels preserved; estimated alpha masks. ART-09 is a nearest-neighbor resized copy of ART-01, not a separate cropped drawing.",
+  "assets": [
+    {
+      "id": "ART-01",
+      "file": "ART-01_yaezakura.png",
+      "label": "八重桜",
+      "source_rect_xyxy": [
+        50,
+        26,
+        218,
+        183
+      ],
+      "output_size": [
+        148,
+        143
+      ],
+      "transparent": true,
+      "extraction": "grabcut",
+      "sha256": "0747b542674bd1b726f991ab2ff3344cbf5836f894ac2dfc99ec36c5261ed1a2"
+    },
+    {
+      "id": "ART-02",
+      "file": "ART-02_neko-books.png",
+      "label": "ネコチャン＋本",
+      "source_rect_xyxy": [
+        1350,
+        39,
+        1610,
+        183
+      ],
+      "output_size": [
+        215,
+        128
+      ],
+      "transparent": true,
+      "extraction": "grabcut",
+      "sha256": "ff8abf56e8398f7a5db13b3c5b35bffcfeffc5e3793c425adb3e1aed476959b1"
+    },
+    {
+      "id": "ART-03",
+      "file": "ART-03_visitors.png",
+      "label": "入場者",
+      "source_rect_xyxy": [
+        169,
+        242,
+        391,
+        401
+      ],
+      "output_size": [
+        199,
+        134
+      ],
+      "transparent": true,
+      "extraction": "grabcut",
+      "sha256": "4ea32910077e4690fee558041d7fb9a80060b89d12bcd4aa6cdc4124695cf539"
+    },
+    {
+      "id": "ART-04",
+      "file": "ART-04_akarenga.png",
+      "label": "赤煉瓦",
+      "source_rect_xyxy": [
+        627,
+        263,
+        828,
+        391
+      ],
+      "output_size": [
+        149,
+        110
+      ],
+      "transparent": true,
+      "extraction": "grabcut",
+      "sha256": "e6b3287cfdb2fd696328c331d745171bdaef314cabd68772933e81f1e66923ef"
+    },
+    {
+      "id": "ART-05",
+      "file": "ART-05_chart.png",
+      "label": "時間別集計",
+      "source_rect_xyxy": [
+        63,
+        812,
+        131,
+        888
+      ],
+      "output_size": [
+        57,
+        54
+      ],
+      "transparent": true,
+      "extraction": "dark",
+      "sha256": "1ca36c49e56c813a24c6af5cd878fc9e95a4a0ee4a9d4b5b4345b64d9cdde6a1"
+    },
+    {
+      "id": "ART-06",
+      "file": "ART-06_staff.png",
+      "label": "担当変更",
+      "source_rect_xyxy": [
+        370,
+        814,
+        439,
+        892
+      ],
+      "output_size": [
+        54,
+        61
+      ],
+      "transparent": true,
+      "extraction": "dark",
+      "sha256": "4c976ec4d390e39a5b8e6e7b8f76998e45665a8bbd85ae8c56b3fa0bcc910556"
+    },
+    {
+      "id": "ART-07",
+      "file": "ART-07_memo.png",
+      "label": "引継ぎ事項",
+      "source_rect_xyxy": [
+        650,
+        811,
+        724,
+        896
+      ],
+      "output_size": [
+        55,
+        62
+      ],
+      "transparent": true,
+      "extraction": "dark",
+      "sha256": "f5e17be7d250fcebfeebfd966b96d45795f75217e3545a8c039fb06134bd2b68"
+    },
+    {
+      "id": "ART-09",
+      "file": "ART-09_yaezakura-small.png",
+      "label": "八重桜・小サイズ（装飾用）",
+      "source_rect_xyxy": [
+        50,
+        26,
+        218,
+        183
+      ],
+      "output_size": [
+        74,
+        72
+      ],
+      "transparent": true,
+      "extraction": "derived_nearest_from_ART-01",
+      "sha256": "a28326217387bcd8524868b63d54b6b7406fab1d6ac56e1a2a5ab6a4975a43ac"
+    }
+  ],
+  "not_extracted": [
+    {
+      "id": "ART-08",
+      "label": "取り消し矢印",
+      "reason": "元モデルに独立した取り消し矢印がなく切り出し不可。CSS/HTMLで実装する。"
+    },
+    {
+      "label": "装飾の放射線",
+      "reason": "原画像ではカウントボタンの縁に接しており、独立抽出すると画素が欠けるため非採用。"
+    }
+  ]
+}
