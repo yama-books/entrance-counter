@@ -5,7 +5,8 @@ iPad横置きの受付で利用する、入場人数と「赤煉瓦」を個別�
 **状態（2026-10-30 JST）: 初期アプリ実装。配信状況はCHECKPOINTを参照 / iPad Safari実機検収は未実施。**
 
 - [アプリを開く](https://yama-books.github.io/entrance-counter/)
-- [最新公開記録：承認済み配色・画像の色調整・予定表示](docs/checkpoints/RELEASE_6_20261030.md)
+- [最新公開記録：確定ミニマル8bit UI](docs/checkpoints/UI_REFINE_01_20261031.md)
+- [前回公開記録：配色・画像の色調整・予定表示](docs/checkpoints/RELEASE_6_20261030.md)
 - [実装CHECKPOINT](docs/checkpoints/IMPLEMENT_01_20261030.md)
 - [検証方法・保存仕様・実機での確認事項](docs/VALIDATION.md)
 
