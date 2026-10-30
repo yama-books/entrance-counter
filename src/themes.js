@@ -1,6 +1,6 @@
 // 初期配色はユーザー承認の「アイボリーと赤煉瓦」。ほか4案は共通デザインライブラリ COL-0001を元にした候補。
 export const themes = [
-  { id: 'ivory-brick', no: '', name: 'アイボリーと赤煉瓦', note: '明るいアイボリー、若草と煉瓦色', colors: ['#FFF9ED', '#FFFEFA', '#78968A', '#B85E4E', '#59453E'] },
+  { id: 'ivory-brick', no: '', name: 'アイボリーと赤煉瓦', note: '白とアイボリー、若草と煉瓦色', colors: ['#FAFAF6', '#FFFEFA', '#78968A', '#B77970', '#292D2A'] },
   { id: 'nordic-lake', no: '029', name: '北欧レイク', note: '静かな湖の青と淡いピンク', colors: ['#EFF4F3', '#C8D9DB', '#88ADB8', '#527F91', '#284957'] },
   { id: 'sakura-milk', no: '001', name: '桜ミルク', note: '淡い桜色と若草', colors: ['#FFF7F5', '#F4CCD2', '#E6A6B3', '#C9D7C4', '#695B64'] },
   { id: 'pink-lemonade', no: '067', name: 'ピンクレモネード', note: '明るく軽い甘さ', colors: ['#FFF8E5', '#F9E08E', '#F7BBC4', '#EC7C9E', '#A44E78'] },

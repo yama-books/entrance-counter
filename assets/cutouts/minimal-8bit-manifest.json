@@ -1,0 +1,45 @@
+{
+  "reference": "assets/reference/final_ui_reference_20261031_preview.webp",
+  "method": "Small code-native pixel pictograms following the approved reference and written spec; no AI regeneration or whole-screen image.",
+  "assets": [
+    {
+      "file": "UI-03_visitors-minimal.png",
+      "pixel_grid": [
+        48,
+        36
+      ],
+      "size": [
+        144,
+        108
+      ],
+      "transparent": true
+    },
+    {
+      "file": "UI-06_staff-minimal.png",
+      "pixel_grid": [
+        24,
+        26
+      ],
+      "size": [
+        72,
+        78
+      ],
+      "transparent": true
+    },
+    {
+      "file": "UI-07_memo-minimal.png",
+      "pixel_grid": [
+        22,
+        26
+      ],
+      "size": [
+        66,
+        78
+      ],
+      "transparent": true
+    }
+  ],
+  "digits": "assets/fonts/reception-digits.ttf",
+  "source": "tools/build-ui-assets.py",
+  "font_scope": "Digits, plus and comma only; Japanese uses the system font."
+}

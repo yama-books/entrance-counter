@@ -31,6 +31,4 @@
 /* Keep the approved pixel artwork; harmonize only the displayed colors in the default palette. */
 :root:not([data-theme]) .cat,:root[data-theme="ivory-brick"] .cat{filter:saturate(.25) sepia(.12) brightness(1.02)}
 :root:not([data-theme]) .akarenga > img,:root[data-theme="ivory-brick"] .akarenga > img{filter:sepia(.24) saturate(.72) hue-rotate(16deg)}
-:root:not([data-theme]) .entry > img,:root[data-theme="ivory-brick"] .entry > img{filter:grayscale(1) sepia(.55) hue-rotate(75deg) saturate(.7) brightness(1.03)}
-:root:not([data-theme]) .actions img,:root[data-theme="ivory-brick"] .actions img{filter:grayscale(1) sepia(.55) hue-rotate(75deg) saturate(.7) brightness(1.03)}
 :root:not([data-theme]) .sakura,:root[data-theme="ivory-brick"] .sakura{filter:saturate(.8)}
