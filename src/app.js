@@ -178,6 +178,17 @@ $('#shift-file').addEventListener('change', async event => {
 // Staff call: the device holds the Apps Script URL and passcode; the recipient lives only in the script.
 const callSettingsKey = 'entrance-counter-call';
 const callUrlPattern = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
+const callConfigFormat = 'staff-call-config';
+function validateCallConfig(data) {
+  if (!data || data.format !== callConfigFormat || data.version !== 1 || typeof data.url !== 'string' || !callUrlPattern.test(data.url) || typeof data.key !== 'string' || !data.key.trim() || data.key.length > 200) throw Error('対応する送信設定ファイルではありません');
+  return { url: data.url, key: data.key };
+}
+function saveCallConfig(config) {
+  localStorage.setItem(callSettingsKey, JSON.stringify(config));
+  $('#call-url').value = config.url; $('#call-key').value = config.key;
+  $('#call-settings').open = false;
+}
+
 function callSettings() {
   try { const value = JSON.parse(localStorage.getItem(callSettingsKey) || 'null'); return value && callUrlPattern.test(value.url) && value.key ? value : null; } catch { return null; }
 }
@@ -223,8 +234,27 @@ $('#call-settings-form').addEventListener('submit', event => {
   event.preventDefault();
   const url = $('#call-url').value.trim(), key = $('#call-key').value;
   if (!callUrlPattern.test(url)) { $('#call-status').textContent = 'URLは https://script.google.com/macros/s/…/exec の形式で入力してください。'; return; }
-  try { localStorage.setItem(callSettingsKey, JSON.stringify({ url, key })); } catch { $('#call-status').textContent = '設定を保存できませんでした。'; return; }
-  $('#call-settings').open = false; $('#call-status').textContent = '送信設定を保存しました。';
+  try { saveCallConfig(validateCallConfig({format:callConfigFormat,version:1,url,key})); } catch { $('#call-status').textContent = '設定を保存できませんでした。'; return; }
+  $('#call-status').textContent = '送信設定を保存しました。';
+});
+$('#call-config-import').addEventListener('change', async event => {
+  const file = event.target.files?.[0]; if (!file) return;
+  try {
+    if (file.size > 8192) throw Error('ファイルが大きすぎます');
+    const config = validateCallConfig(JSON.parse(await file.text()));
+    saveCallConfig(config);
+    $('#call-status').textContent = '共通送信設定をこの端末に取り込みました。';
+  } catch (error) { $('#call-status').textContent = `設定の読込に失敗：${error.message}`; }
+  finally { event.target.value = ''; }
+});
+$('#call-config-export').addEventListener('click', () => {
+  const config = callSettings();
+  if (!config) { $('#call-status').textContent = '先に送信設定を保存してください。'; return; }
+  const content = JSON.stringify({format:callConfigFormat,version:1,url:config.url,key:config.key},null,2);
+  const objectUrl = URL.createObjectURL(new Blob([content], {type:'application/json'}));
+  const a = document.createElement('a'); a.href=objectUrl; a.download='staff-call-settings.local.json'; a.click();
+  setTimeout(() => URL.revokeObjectURL(objectUrl),60000);
+  $('#call-status').textContent = '設定ファイルを書き出しました。合言葉が含まれるため公開しないでください。';
 });
 $('#call-form').addEventListener('submit', async event => {
   event.preventDefault();
@@ -235,7 +265,7 @@ $('#call-form').addEventListener('submit', async event => {
   const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 20000);
   try {
     // text/plain keeps this a simple request, which Apps Script accepts without a CORS preflight.
-    const response = await fetch(settings.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key: settings.key, text, staff: currentStaff(events), at: new Date().toISOString() }), signal: abort.signal });
+    const response = await fetch(settings.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key: settings.key, text, staff: currentStaff(events), source:'library', at: new Date().toISOString() }), signal: abort.signal });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw Error(result.error || `応答 ${response.status}`);
     $('#call-input').value = ''; $('#call-status').textContent = `送信しました（${timeOf(new Date().toISOString()).slice(0, 5)}）。`; status('山本へ連絡を送信しました');
