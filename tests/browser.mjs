@@ -261,9 +261,17 @@ try {
   assert.equal(await page.locator('.count-tick').count(), 0);
   console.log('PASS minimal UI: three new PNG pictograms, decoded pixel digits, thin square frames, flat surfaces, single-color chart/axis and 2px press');
   await page.locator('#interval').selectOption('5');
-  for (const [width, height] of [[1194,834],[1024,768],[768,1024],[390,844]]) {
+  for (const [width, height] of [[1440,900],[1194,834],[1024,768],[768,1024],[390,844]]) {
     await page.setViewportSize({ width, height });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    const buttons = await page.locator('.count').evaluateAll(elements => elements.map(el => {
+      const rect = el.getBoundingClientRect(), style = getComputedStyle(el);
+      return { width: rect.width, height: rect.height, y: rect.y, fontSize: style.fontSize };
+    }));
+    for (const dimension of ['width', 'height', 'y']) {
+      assert.ok(Math.abs(buttons[0][dimension] - buttons[1][dimension]) < .05, `equal plus button ${dimension} at ${width}px`);
+    }
+    assert.equal(buttons[0].fontSize, buttons[1].fontSize, `equal plus font at ${width}px`);
     if (width >= 1024) {
       assert.ok((await page.locator('[data-kind="entry"]').boundingBox()).y + (await page.locator('[data-kind="entry"]').boundingBox()).height < height);
       const menu = await page.locator('[data-open="shift-dialog"]').boundingBox(); assert.ok(menu.y + menu.height < height);
@@ -275,7 +283,7 @@ try {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   assert.equal(await page.locator('.count').first().evaluate(el => getComputedStyle(el).animationName), 'none');
   assert.deepEqual(errors, []);
-  console.log('PASS responsive layout, reduced motion, no page errors');
+  console.log('PASS equal plus button width/height/position/font at 1440/1194/1024/768/390px; responsive layout, reduced motion, no page errors');
   const scheduleContext = await browser.newContext({ viewport: { width: 1194, height: 834 } });
   const schedulePage = await scheduleContext.newPage();
   await schedulePage.clock.setFixedTime(new Date('2026-10-31T11:10:00+09:00'));
