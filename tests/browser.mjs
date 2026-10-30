@@ -33,6 +33,9 @@ try {
   await page.locator('[data-open="memo-dialog"]').click(); await page.locator('#memo-input').fill('架空メモ <script> test'); await page.locator('#memo-form button').click();
   await page.waitForFunction(() => document.querySelector('#memos').textContent.includes('架空メモ'));
   await page.locator('#memo-dialog [data-close]').click();
+  assert.ok((await page.locator('#recent .memo-record').textContent()).includes('架空メモ <script> test'));
+  assert.ok((await page.locator('#latest-handoff-text').textContent()).includes('架空メモ <script> test'));
+  assert.equal(await page.locator('#latest-handoff-text script').count(), 0);
   await page.locator('[data-undo="entry"]').click(); await page.locator('#confirm-yes').click();
   await page.waitForFunction(() => document.querySelector('#entry-total').textContent === '9');
   const page2 = await context.newPage(); await page2.goto(url); await page2.waitForFunction(() => !document.querySelector('[data-kind]').disabled);
@@ -41,6 +44,19 @@ try {
   await page2.close(); await page.reload(); await page.waitForFunction(() => document.querySelector('#entry-total').textContent === '19');
   assert.equal(await page.locator('#staff-name').textContent(), 'テスト担当B');
   console.log('PASS reload, staff snapshot, safe memo, cancellation, concurrent tabs');
+  assert.ok((await page.locator('#latest-handoff-text').textContent()).includes('架空メモ'));
+  await page.locator('[data-open="history-dialog"]').click();
+  assert.ok((await page.locator('#all-history .memo-record').textContent()).includes('架空メモ <script> test'));
+  await page.locator('#history-dialog [data-close]').click();
+  for (const minutes of [5, 15, 30, 60]) {
+    await page.locator('#interval').selectOption(String(minutes));
+    assert.equal(await page.locator('#chart .bar').count(), 1440 / minutes);
+    await page.locator('[data-open="summary-dialog"]').click();
+    assert.equal(await page.locator('#summary-table tr').count(), 1440 / minutes + 2);
+    await page.locator('#summary-dialog [data-close]').click();
+  }
+  await page.locator('#interval').selectOption('5');
+  console.log('PASS highlighted handoff body in recent/full history and pinned latest; all four aggregation intervals');
   await page.locator('[data-open="data-dialog"]').click();
   const downloaded = page.waitForEvent('download'); await page.locator('#export-json').click(); const download = await downloaded;
   const backup = JSON.parse(await readFile(await download.path(), 'utf8'));
@@ -91,10 +107,67 @@ try {
   });
   assert.deepEqual(storage, { once: 1, rejected: true, unchanged: true, closed: true });
   console.log('PASS IndexedDB idempotence, invalid transaction rollback, closed DB rejection');
+  // A contact must save before release; the following synthetic click must not add again.
+  const touchContext = await browser.newContext({ hasTouch: true, viewport: { width: 1194, height: 834 } });
+  const touch = await touchContext.newPage(); await touch.goto(url); await touch.waitForFunction(() => !document.querySelector('[data-kind]').disabled);
+  await touch.evaluate(() => {
+    window.numberMotions = [];
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (frames, options) { if (this.id === 'entry-total') window.numberMotions.push(frames); return animate.call(this, frames, options); };
+  });
+  const hit = await touch.locator('[data-kind="entry"]').boundingBox();
+  await touch.mouse.move(hit.x + hit.width / 2, hit.y + hit.height / 2); await touch.mouse.down();
+  await touch.waitForFunction(() => document.querySelector('#entry-total').textContent === '1');
+  assert.ok(await touch.evaluate(() => window.numberMotions.some(frames => frames[0].transform === 'translateY(.32em)' && frames[1].transform === 'translateY(0)')));
+  await touch.mouse.up(); await touch.waitForTimeout(150);
+  assert.equal(await touch.locator('#entry-total').textContent(), '1');
+  await touch.locator('[data-kind="entry"]').focus(); await touch.keyboard.press('Enter');
+  await touch.waitForFunction(() => document.querySelector('#entry-total').textContent === '2');
+  await touch.keyboard.press('Space'); await touch.waitForFunction(() => document.querySelector('#entry-total').textContent === '3');
+  await touch.locator('[data-kind="entry"]').tap(); await touch.waitForFunction(() => document.querySelector('#entry-total').textContent === '4');
+  await touch.waitForTimeout(150); assert.equal(await touch.locator('#entry-total').textContent(), '4');
+  await touch.emulateMedia({ reducedMotion: 'reduce' }); const motions = await touch.evaluate(() => window.numberMotions.length);
+  await touch.locator('[data-kind="entry"]').tap(); await touch.waitForFunction(() => document.querySelector('#entry-total').textContent === '5');
+  assert.equal(await touch.evaluate(() => window.numberMotions.length), motions);
+  await touch.reload(); await touch.waitForFunction(() => document.querySelector('#entry-total').textContent === '5');
+  await touchContext.close();
+  console.log('PASS contact-time save, exactly once after release/touch/keyboard, upward number motion, reduced-motion suppression');
+  const shiftImage = await readFile('assets/cutouts/ART-01_yaezakura.png');
+  await page.locator('[data-open="shift-dialog"]').click();
+  await page.locator('#shift-file').setInputFiles({ name: 'test-shift.png', mimeType: 'image/png', buffer: shiftImage });
+  await page.waitForFunction(() => document.querySelector('#shift-status').textContent.startsWith('test-shift.png'));
+  await page.waitForFunction(() => document.querySelector('#shift-preview').naturalWidth > 0);
+  await page.reload(); await page.waitForFunction(() => !document.querySelector('[data-kind]').disabled);
+  await page.locator('[data-open="shift-dialog"]').click();
+  await page.waitForFunction(() => document.querySelector('#shift-status').textContent.startsWith('test-shift.png'));
+  const originalPreview = await page.locator('#shift-preview').getAttribute('src');
+  await page.locator('#shift-file').setInputFiles({ name: 'bad.png', mimeType: 'image/png', buffer: Buffer.from('not an image') });
+  await page.waitForFunction(() => document.querySelector('#shift-status').textContent.startsWith('保存失敗'));
+  assert.equal(await page.locator('#shift-preview').getAttribute('src'), originalPreview);
+  await page.evaluate(() => {
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (...args) { IDBObjectStore.prototype.put = put; throw new DOMException('Test failure', 'QuotaExceededError'); };
+  });
+  await page.locator('#shift-file').setInputFiles({ name: 'replacement.png', mimeType: 'image/png', buffer: shiftImage });
+  await page.waitForFunction(() => document.querySelector('#shift-status').textContent.includes('Test failure'));
+  assert.equal(await page.locator('#shift-preview').getAttribute('src'), originalPreview);
+  await page.locator('#shift-file').setInputFiles({ name: 'replacement.png', mimeType: 'image/png', buffer: shiftImage });
+  await page.waitForFunction(() => document.querySelector('#shift-status').textContent.startsWith('replacement.png'));
+  const saved = await page.evaluate(async () => {
+    const { openStore, read, readShift } = await import('/src/storage.js'); const db = await openStore();
+    const image = await readShift(db), events = await read(db); db.close(); return { name: image.name, count: events.length, bytes: image.blob.size };
+  });
+  assert.equal(saved.name, 'replacement.png'); assert.equal(saved.count, 29); assert.equal(saved.bytes, shiftImage.length);
+  await page.locator('#shift-dialog [data-close]').click();
+  console.log('PASS local shift image upload/reload/replacement, invalid image and failed save preserve image, event log unchanged');
+  await page.locator('#interval').selectOption('5');
   for (const [width, height] of [[1194,834],[1024,768],[768,1024],[390,844]]) {
     await page.setViewportSize({ width, height });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-    if (width >= 1024) assert.ok((await page.locator('[data-kind="entry"]').boundingBox()).y + (await page.locator('[data-kind="entry"]').boundingBox()).height < height);
+    if (width >= 1024) {
+      assert.ok((await page.locator('[data-kind="entry"]').boundingBox()).y + (await page.locator('[data-kind="entry"]').boundingBox()).height < height);
+      const menu = await page.locator('[data-open="shift-dialog"]').boundingBox(); assert.ok(menu.y + menu.height < height);
+    }
   }
   await page.setViewportSize({ width:1194,height:834 });
   await page.screenshot({ path: process.env.SCREENSHOT_PATH || 'test-results/ipad-landscape.png', fullPage: true });

@@ -44,3 +44,21 @@ export function write(db, operation) {
     tx.onabort = () => reject(failure || tx.error || Error('保存できませんでした'));
   });
 }
+export function readShift(db) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('state', 'readonly');
+    const request = tx.objectStore('state').get('shift-image');
+    tx.oncomplete = () => resolve(request.result || null);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || Error('シフト表を読み込めませんでした'));
+  });
+}
+export function writeShift(db, image) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('state', 'readwrite');
+    tx.objectStore('state').put(image, 'shift-image');
+    tx.oncomplete = () => resolve(image);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || Error('シフト表を保存できませんでした'));
+  });
+}
