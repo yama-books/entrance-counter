@@ -188,6 +188,19 @@ try {
   await page.waitForFunction(() => document.querySelector('#call-status').textContent.startsWith('送信しました'));
   assert.equal(calls.length, 1); assert.equal(calls[0].method, 'POST'); assert.match(calls[0].type, /^text\/plain/);
   assert.equal(calls[0].body.key, 'test-pass'); assert.equal(calls[0].body.text, '受付に来てください'); assert.equal(calls[0].body.staff, 'テスト担当B');
+  assert.equal(calls[0].body.source, 'library');
+  // Import one private config file; settings persist for both apps on this origin.
+  await page.locator('#call-config-import').setInputFiles({
+    name:'staff-call-settings.local.json',mimeType:'application/json',
+    buffer:Buffer.from(JSON.stringify({format:'staff-call-config',version:1,url:callUrl,key:'imported-test-pass'}))
+  });
+  await page.waitForFunction(() => document.querySelector('#call-status').textContent.includes('取り込みました'));
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('entrance-counter-call')).key), 'imported-test-pass');
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('book-flea-register-call')).key), 'imported-test-pass');
+  const dl = page.waitForEvent('download');
+  await page.locator('#call-settings').evaluate(el => el.open = true);
+  await page.locator('#call-config-export').click();
+  assert.equal((await dl).suggestedFilename(), 'staff-call-settings.local.json');
   assert.equal(await page.locator('#call-input').inputValue(), '');
   callReply = { ok: false, error: '合言葉が違います' };
   await page.locator('#call-input').fill('二回目'); await page.locator('#call-form button').click();
