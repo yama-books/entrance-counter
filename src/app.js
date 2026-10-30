@@ -242,17 +242,17 @@ $('#call-settings-form').addEventListener('submit', event => {
 });
 $('#call-form').addEventListener('submit', async event => {
   event.preventDefault();
-  const text = $('#call-input').value.trim(), settings = callSettings(), button = event.target.querySelector('button');
-  if (!text) return;
+  const text = $('#call-input').value.trim(), staff = $('#call-staff').value.trim(), settings = callSettings(), button = event.target.querySelector('button');
+  if (!text || !staff || staff.length > 80) { $('#call-status').textContent = '担当者名と要件を入力してください。'; return; }
   if (!settings) { $('#call-status').textContent = '合言葉が未設定です。画面下の「設定」→「メール通知」で保存してください。要件は残っています。'; return; }
   button.disabled = true; $('#call-status').textContent = '送信中…';
   const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 20000);
   try {
     // text/plain keeps this a simple request, which Apps Script accepts without a CORS preflight.
-    const response = await fetch(settings.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key: settings.key, text, staff: currentStaff(events), source:'library', at: new Date().toISOString() }), signal: abort.signal });
+    const response = await fetch(settings.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key: settings.key, text, staff, source:'library', at: new Date().toISOString() }), signal: abort.signal });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw Error(result.error || `応答 ${response.status}`);
-    $('#call-input').value = ''; $('#call-status').textContent = `送信しました（${timeOf(new Date().toISOString()).slice(0, 5)}）。`; status('山本へ連絡を送信しました');
+    $('#call-input').value = ''; $('#call-staff').value = ''; $('#call-status').textContent = `送信しました（${timeOf(new Date().toISOString()).slice(0, 5)}）。`; status('山本へ連絡を送信しました');
   } catch (e) {
     $('#call-status').textContent = `送信失敗：${e.name === 'AbortError' ? '時間切れ' : e.message || '通信できませんでした'}。要件は残っています。`;
   } finally { clearTimeout(timer); button.disabled = false; }
