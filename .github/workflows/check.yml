@@ -1,8 +1,10 @@
 name: Checks
 on:
   pull_request:
+    paths-ignore: ['docs/**', 'README.md', 'AGENTS.md']
   push:
     branches: [main]
+    paths-ignore: ['docs/**', 'README.md', 'AGENTS.md']
 permissions:
   contents: read
 jobs:
@@ -15,3 +17,19 @@ jobs:
           node-version: '24'
       - run: npm ci
       - run: npm test
+  browser:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npm run check
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - run: npm run test:browser
+        env:
+          BROWSER: ${{ matrix.browser }}

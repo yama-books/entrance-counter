@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ja">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f9dde1"><title>本日の図書館入場者数</title><link rel="stylesheet" href="styles.css"></head>
+<body>
+<header class="panel header"><img class="sakura" src="assets/cutouts/ART-01_yaezakura.png" alt=""><div class="heading"><h1>本日の図書館入場者数</h1><p id="date"></p></div><button id="staff-top" data-open="staff-dialog">担当：<span id="staff-name">未設定</span>⌄</button><img class="cat" src="assets/cutouts/ART-02_neko-books.png" alt="本のそばのネコ"></header>
+<main>
+<section class="left" aria-label="カウンター">
+<div class="panel counters">
+<article class="counter entry"><h2 class="sr-only">入場者数</h2><img src="assets/cutouts/ART-03_visitors.png" alt=""><div class="number"><strong id="entry-total">0</strong><span>人</span></div><button class="count" data-kind="entry" disabled aria-label="入場 +1人">+1<span>人</span></button><button class="undo" data-undo="entry" disabled>↶ 入場を1件取り消す</button></article>
+<article class="counter akarenga"><h2 class="sr-only">赤煉瓦</h2><img src="assets/cutouts/ART-04_akarenga.png" alt=""><div class="number"><strong id="akarenga-total">0</strong><span>冊</span></div><button class="count" data-kind="akarenga" disabled aria-label="赤煉瓦 +1冊">+1<span>冊</span></button><button class="undo" data-undo="akarenga" disabled>↶ 赤煉瓦を1件取り消す</button></article>
+</div>
+<nav class="actions" aria-label="受付操作"><button data-open="summary-dialog"><img src="assets/cutouts/ART-05_chart.png" alt="">時間別集計</button><button data-open="staff-dialog"><img src="assets/cutouts/ART-06_staff.png" alt="">担当変更</button><button data-open="memo-dialog"><img src="assets/cutouts/ART-07_memo.png" alt="">引継ぎ事項入力</button></nav>
+</section>
+<section class="right">
+<section class="panel chart-panel"><div class="section-title"><h2>▥ 時間別集計</h2><div class="segmented"><button class="selected" data-chart="entry" aria-pressed="true">入場者数</button><button data-chart="akarenga" aria-pressed="false">赤煉瓦</button></div></div><div class="chart-options"><label>集計単位 <select id="interval"><option value="60">1時間</option><option value="30">30分</option></select></label><span id="chart-description"></span></div><div id="chart" class="chart" role="img" aria-label="時間別集計"></div><div class="chart-labels"><span>0時</span><span>6時</span><span>12時</span><span>18時</span><span>24時</span></div></section>
+<section class="panel history-panel"><div class="section-title"><h2>▤ 記録一覧</h2><button class="text-button" data-open="history-dialog">すべて表示 ›</button></div><div id="recent" class="history"></div></section>
+</section>
+</main>
+<footer><span id="status" role="status" aria-live="polite">保存領域を確認しています…</span><button data-open="data-dialog">データ書出し・復元</button></footer>
+<dialog id="staff-dialog"><div class="dialog-heading"><h2>担当変更</h2><button data-close aria-label="閉じる">×</button></div><p>担当を変更しても、本日の累計は継続します。</p><form id="staff-form"><label>新しい担当者名<input id="staff-input" maxlength="80" required autocomplete="off"></label><button class="primary">担当を変更して保存</button></form><h3>担当変更の記録</h3><div id="staff-history" class="detail-list"></div></dialog>
+<dialog id="memo-dialog"><div class="dialog-heading"><h2>引継ぎ事項</h2><button data-close aria-label="閉じる">×</button></div><form id="memo-form"><label>新しい引継ぎメモ<textarea id="memo-input" maxlength="2000" rows="4" required></textarea></label><button class="primary">メモを保存</button></form><h3>保存済みの引継ぎ</h3><div id="memos" class="detail-list"></div></dialog>
+<dialog id="summary-dialog"><div class="dialog-heading"><h2>時間別集計</h2><button data-close aria-label="閉じる">×</button></div><p>メイン画面の集計単位を反映します。</p><label>集計日<input id="summary-day" type="date"></label><div id="summary-table"></div><h3>担当者別</h3><div id="staff-table"></div></dialog>
+<dialog id="history-dialog"><div class="dialog-heading"><h2>記録一覧・訂正</h2><button data-close aria-label="閉じる">×</button></div><p>誤入力は対象の「取消」から取り消し、正しいボタンを押し直してください。元記録と取消記録は残ります。</p><div id="all-history" class="history"></div><button id="more-history">さらに100件表示</button></dialog>
+<dialog id="data-dialog"><div class="dialog-heading"><h2>データ書出し・復元</h2><button data-close aria-label="閉じる">×</button></div><p>記録はこのブラウザに保存されます。端末の故障やブラウザのデータ消去に備え、定期的にJSONを保存してください。</p><div class="export-actions"><button id="export-json">全記録 JSON</button><button id="export-csv">全記録 CSV</button><button id="export-summary">選択日の集計 CSV</button></div><p>書出しには担当者名・メモも含まれます。保存先の扱いにご注意ください。</p><label>JSONから復元（既存記録を保持して追加）<input id="restore" type="file" accept=".json,application/json"></label></dialog>
+<dialog id="confirm-dialog"><h2>記録の確認</h2><p id="confirm-text"></p><div class="export-actions"><button id="confirm-no">戻る</button><button id="confirm-yes" class="primary">実行する</button></div></dialog>
+<script type="module" src="src/app.js"></script>
+</body></html>
