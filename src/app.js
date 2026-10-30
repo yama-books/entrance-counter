@@ -127,7 +127,8 @@ document.querySelectorAll('[data-undo]').forEach(button => button.addEventListen
 }));
 document.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => {
   const dialog = document.getElementById(button.dataset.open); dialog.showModal(); render();
-  if (dialog.id === 'call-dialog') { showCallSchedule(); showCallSettings(); }
+  if (dialog.id === 'call-dialog') showCallSchedule();
+  if (dialog.id === 'settings-dialog') showCallSettings();
   if (dialog.id === 'theme-dialog') showThemes();
   if (dialog.id === 'shift-dialog') showShift().catch(e => { $('#shift-status').textContent = `読込失敗：${e.message}`; });
 }));
@@ -177,21 +178,19 @@ $('#shift-file').addEventListener('change', async event => {
 });
 // Staff call: the device holds the Apps Script URL and passcode; the recipient lives only in the script.
 const callSettingsKey = 'entrance-counter-call';
-const callUrlPattern = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
-const callConfigFormat = 'staff-call-config';
-function validateCallConfig(data) {
-  if (!data || data.format !== callConfigFormat || data.version !== 1 || typeof data.url !== 'string' || !callUrlPattern.test(data.url) || typeof data.key !== 'string' || !data.key.trim() || data.key.length > 200) throw Error('対応する送信設定ファイルではありません');
-  return { url: data.url, key: data.key };
-}
-function saveCallConfig(config, shareBoth = false) {
-  localStorage.setItem(callSettingsKey, JSON.stringify(config));
-  if (shareBoth) localStorage.setItem('book-flea-register-call', JSON.stringify(config));
-  $('#call-url').value = config.url; $('#call-key').value = config.key;
-  $('#call-settings').open = false;
-}
-
+// Public deployment endpoint: the passcode is NEVER included in published files.
+const callEndpointUrl = 'https://script.google.com/macros/s/AKfycbzJqPHStaj08vfVucJ0hl7a1Nlw7lDIIcq1i5DSj0uRDySu4pS2J1-FpUfqR-fNMnJ9/exec';
 function callSettings() {
-  try { const value = JSON.parse(localStorage.getItem(callSettingsKey) || 'null'); return value && callUrlPattern.test(value.url) && value.key ? value : null; } catch { return null; }
+  // Older versions stored {url,key}; ignore any saved URL in favor of the approved endpoint.
+  for (const storageKey of [callSettingsKey, 'book-flea-register-call']) {
+    try {
+      const value = JSON.parse(localStorage.getItem(storageKey) || 'null');
+      if (value && typeof value.key === 'string' && value.key.trim() && value.key.length <= 200) {
+        return { url: callEndpointUrl, key: value.key };
+      }
+    } catch { /* Try the next local setting. */ }
+  }
+  return null;
 }
 applyTheme(savedTheme());
 function showThemes() {
@@ -227,49 +226,33 @@ function showCallSchedule() {
 }
 function showCallSettings() {
   const settings = callSettings();
-  $('#call-url').value = settings?.url || ''; $('#call-key').value = settings?.key || '';
-  $('#call-settings').open = !settings;
-  $('#call-status').textContent = settings ? '' : '送信設定がまだありません。下の送信設定を入力してください。';
+  $('#call-key').value = '';
+  $('#call-settings-status').textContent = settings ? '合言葉は設定済みです。変更する場合は新しい合言葉を入力してください。' : '合言葉がまだ設定されていません。';
 }
 $('#call-settings-form').addEventListener('submit', event => {
   event.preventDefault();
-  const url = $('#call-url').value.trim(), key = $('#call-key').value;
-  if (!callUrlPattern.test(url)) { $('#call-status').textContent = 'URLは https://script.google.com/macros/s/…/exec の形式で入力してください。'; return; }
-  try { saveCallConfig(validateCallConfig({format:callConfigFormat,version:1,url,key})); } catch { $('#call-status').textContent = '設定を保存できませんでした。'; return; }
-  $('#call-status').textContent = '送信設定を保存しました。';
-});
-$('#call-config-import').addEventListener('change', async event => {
-  const file = event.target.files?.[0]; if (!file) return;
-  try {
-    if (file.size > 8192) throw Error('ファイルが大きすぎます');
-    const config = validateCallConfig(JSON.parse(await file.text()));
-    saveCallConfig(config, true);
-    $('#call-status').textContent = '共通送信設定をこの端末に取り込みました。';
-  } catch (error) { $('#call-status').textContent = `設定の読込に失敗：${error.message}`; }
-  finally { event.target.value = ''; }
-});
-$('#call-config-export').addEventListener('click', () => {
-  const config = callSettings();
-  if (!config) { $('#call-status').textContent = '先に送信設定を保存してください。'; return; }
-  const content = JSON.stringify({format:callConfigFormat,version:1,url:config.url,key:config.key},null,2);
-  const objectUrl = URL.createObjectURL(new Blob([content], {type:'application/json'}));
-  const a = document.createElement('a'); a.href=objectUrl; a.download='staff-call-settings.local.json'; a.click();
-  setTimeout(() => URL.revokeObjectURL(objectUrl),60000);
-  $('#call-status').textContent = '設定ファイルを書き出しました。合言葉が含まれるため公開しないでください。';
+  const key = $('#call-key').value;
+  if (!key.trim() || key.length > 200) {
+    $('#call-settings-status').textContent = '合言葉を1〜200文字で入力してください。'; return;
+  }
+  try { localStorage.setItem(callSettingsKey, JSON.stringify({ key })); }
+  catch { $('#call-settings-status').textContent = '合言葉を保存できませんでした。'; return; }
+  $('#call-key').value = '';
+  $('#call-settings-status').textContent = 'この端末に合言葉を保存しました。';
 });
 $('#call-form').addEventListener('submit', async event => {
   event.preventDefault();
-  const text = $('#call-input').value.trim(), settings = callSettings(), button = event.target.querySelector('button');
-  if (!text) return;
-  if (!settings) { $('#call-settings').open = true; $('#call-status').textContent = '先に送信設定を保存してください。'; return; }
+  const text = $('#call-input').value.trim(), staff = $('#call-staff').value.trim(), settings = callSettings(), button = event.target.querySelector('button');
+  if (!text || !staff || staff.length > 80) { $('#call-status').textContent = '担当者名と要件を入力してください。'; return; }
+  if (!settings) { $('#call-status').textContent = '合言葉が未設定です。画面下の「設定」→「メール通知」で保存してください。要件は残っています。'; return; }
   button.disabled = true; $('#call-status').textContent = '送信中…';
   const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 20000);
   try {
     // text/plain keeps this a simple request, which Apps Script accepts without a CORS preflight.
-    const response = await fetch(settings.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key: settings.key, text, staff: currentStaff(events), source:'library', at: new Date().toISOString() }), signal: abort.signal });
+    const response = await fetch(settings.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key: settings.key, text, staff, source:'library', at: new Date().toISOString() }), signal: abort.signal });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw Error(result.error || `応答 ${response.status}`);
-    $('#call-input').value = ''; $('#call-status').textContent = `送信しました（${timeOf(new Date().toISOString()).slice(0, 5)}）。`; status('山本へ連絡を送信しました');
+    $('#call-input').value = ''; $('#call-staff').value = ''; $('#call-status').textContent = `送信しました（${timeOf(new Date().toISOString()).slice(0, 5)}）。`; status('山本へ連絡を送信しました');
   } catch (e) {
     $('#call-status').textContent = `送信失敗：${e.name === 'AbortError' ? '時間切れ' : e.message || '通信できませんでした'}。要件は残っています。`;
   } finally { clearTimeout(timer); button.disabled = false; }
