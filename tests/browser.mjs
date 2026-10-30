@@ -166,48 +166,56 @@ try {
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
   assert.ok(await countButton.evaluate(el => el.classList.contains('pressed') && getComputedStyle(el).transform !== 'none'));
   await page.mouse.up(); await page.waitForFunction(() => !document.querySelector('[data-kind="entry"]').classList.contains('pressed'));
-  // Staff call: settings validation, mocked Apps Script delivery, failure keeps the request text.
-  const callUrl = 'https://script.google.com/macros/s/TEST_DEPLOYMENT/exec', calls = [];
-  let callReply = { ok: true };
-  await page.route('https://script.google.com/**', async route => {
-    calls.push({ method: route.request().method(), type: route.request().headers()['content-type'], body: JSON.parse(route.request().postData()) });
-    await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(callReply) });
+  // Staff call: explicit staff name, settings-only passcode, and fixed GAS endpoint.
+  const calls=[];let callReply={ok:true};
+  await page.route('https://script.google.com/**',async route=>{
+    calls.push({url:route.request().url(),method:route.request().method(),type:route.request().headers()['content-type'],body:JSON.parse(route.request().postData())});
+    await route.fulfill({status:200,contentType:'application/json',headers:{'Access-Control-Allow-Origin':'*'},body:JSON.stringify(callReply)});
   });
   await page.locator('#call-top').click();
-  assert.equal(await page.locator('#call-dialog h2').textContent(), '要件を入力');
-  assert.ok(await page.locator('#call-settings').evaluate(el => el.open));
+  assert.equal(await page.locator('#call-dialog #call-key').count(),0);
+  assert.equal(await page.locator('#call-url').count(),0);
   await page.locator('#call-input').fill('受付に来てください');
   await page.locator('#call-form button').click();
-  await page.waitForFunction(() => document.querySelector('#call-status').textContent.includes('先に送信設定'));
-  await page.locator('#call-url').fill('https://example.com/exec'); await page.locator('#call-key').fill('test-pass');
-  await page.locator('#call-settings-form button').click();
-  await page.waitForFunction(() => document.querySelector('#call-status').textContent.includes('形式で入力'));
-  await page.locator('#call-url').fill(callUrl); await page.locator('#call-settings-form button').click();
-  await page.waitForFunction(() => document.querySelector('#call-status').textContent.includes('保存しました'));
+  assert.equal(calls.length,0); // required staff name blocks submit.
+  await page.locator('#call-staff').fill('図書館担当');
   await page.locator('#call-form button').click();
-  await page.waitForFunction(() => document.querySelector('#call-status').textContent.startsWith('送信しました'));
-  assert.equal(calls.length, 1); assert.equal(calls[0].method, 'POST'); assert.match(calls[0].type, /^text\/plain/);
-  assert.equal(calls[0].body.key, 'test-pass'); assert.equal(calls[0].body.text, '受付に来てください'); assert.equal(calls[0].body.staff, 'テスト担当B');
-  assert.equal(calls[0].body.source, 'library');
-  // Import one private config file; settings persist for both apps on this origin.
-  await page.locator('#call-config-import').setInputFiles({
-    name:'staff-call-settings.local.json',mimeType:'application/json',
-    buffer:Buffer.from(JSON.stringify({format:'staff-call-config',version:1,url:callUrl,key:'imported-test-pass'}))
-  });
-  await page.waitForFunction(() => document.querySelector('#call-status').textContent.includes('取り込みました'));
-  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('entrance-counter-call')).key), 'imported-test-pass');
-  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('book-flea-register-call')).key), 'imported-test-pass');
-  const dl = page.waitForEvent('download');
-  await page.locator('#call-settings').evaluate(el => el.open = true);
-  await page.locator('#call-config-export').click();
-  assert.equal((await dl).suggestedFilename(), 'staff-call-settings.local.json');
-  assert.equal(await page.locator('#call-input').inputValue(), '');
-  callReply = { ok: false, error: '合言葉が違います' };
-  await page.locator('#call-input').fill('二回目'); await page.locator('#call-form button').click();
-  await page.waitForFunction(() => document.querySelector('#call-status').textContent.includes('合言葉が違います'));
-  assert.equal(await page.locator('#call-input').inputValue(), '二回目');
-  await page.locator('#call-dialog [data-close]').click(); await page.unroute('https://script.google.com/**');
-  console.log('PASS count button sinks on contact; staff call settings, mocked delivery, failure keeps request');
+  await page.waitForFunction(()=>document.querySelector('#call-status').textContent.includes('「設定」'));
+  assert.equal(await page.locator('#call-input').inputValue(),'受付に来てください');
+  await page.locator('#call-dialog [data-close]').click();
+  await page.locator('[data-open="settings-dialog"]').click();
+  await page.locator('#call-key').fill('test-pass');
+  await page.locator('#call-settings-form button').click();
+  await page.waitForFunction(()=>document.querySelector('#call-settings-status').textContent.includes('保存しました'));
+  assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('entrance-counter-call'))),{key:'test-pass'});
+  await page.locator('#settings-dialog [data-close]').click();
+  await page.locator('#call-top').click();
+  await page.locator('#call-form button').click();
+  await page.waitForFunction(()=>document.querySelector('#call-status').textContent.startsWith('送信しました'));
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].url,'https://script.google.com/macros/s/AKfycbzJqPHStaj08vfVucJ0hl7a1Nlw7lDIIcq1i5DSj0uRDySu4pS2J1-FpUfqR-fNMnJ9/exec');
+  assert.equal(calls[0].method,'POST');assert.match(calls[0].type,/^text\/plain/);
+  assert.equal(calls[0].body.key,'test-pass');
+  assert.equal(calls[0].body.staff,'図書館担当');
+  assert.equal(calls[0].body.text,'受付に来てください');
+  assert.equal(calls[0].body.source,'library');
+  assert.equal(await page.locator('#call-input').inputValue(),'');
+  assert.equal(await page.locator('#call-staff').inputValue(),'');
+  // Older local settings may carry a different URL; it must be ignored.
+  await page.evaluate(()=>localStorage.setItem('entrance-counter-call',JSON.stringify({url:'https://script.google.com/macros/s/OLD_DEPLOYMENT/exec',key:'legacy-pass'})));
+  callReply={ok:false,error:'合言葉が違います'};
+  await page.locator('#call-staff').fill('受付二号');
+  await page.locator('#call-input').fill('二回目');
+  await page.locator('#call-form button').click();
+  await page.waitForFunction(()=>document.querySelector('#call-status').textContent.includes('合言葉が違います'));
+  assert.equal(calls[1].url,calls[0].url);
+  assert.equal(calls[1].body.key,'legacy-pass');
+  assert.equal(calls[1].body.staff,'受付二号');
+  assert.equal(await page.locator('#call-staff').inputValue(),'受付二号');
+  assert.equal(await page.locator('#call-input').inputValue(),'二回目');
+  await page.locator('#call-dialog [data-close]').click();
+  await page.unroute('https://script.google.com/**');
+  console.log('PASS fixed GAS URL, explicit staff name, Settings-only password and failure retention');
   // Theme picker: five palettes, choice persists on the device.
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'ivory-brick');
   assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), 'rgb(255, 249, 237)');
