@@ -106,24 +106,26 @@ async function cancelEvent(event) {
 document.querySelectorAll('[data-kind]').forEach(button => {
   const count = () => {
     if (button.disabled) return;
-    if (!reducedMotion.matches) {
-      button.getAnimations().forEach(animation => animation.cancel());
-      button.animate([{ filter: 'brightness(.88)' }, { filter: 'brightness(1)' }], { duration: 150 });
-    }
     enqueue(record(button.dataset.kind), `${labels[button.dataset.kind]} +1 を保存しました`).catch(() => {});
   };
+  // Sink on contact and stay down briefly so even a quick tap is visible.
+  let pressedAt = 0, releaseTimer = 0;
+  const press = () => { clearTimeout(releaseTimer); pressedAt = performance.now(); button.classList.add('pressed'); };
+  const release = () => { releaseTimer = setTimeout(() => button.classList.remove('pressed'), Math.max(0, 90 - (performance.now() - pressedAt))); };
   // Count on contact; ignore the matching compatibility click to avoid double recording.
   button.addEventListener('pointerdown', event => {
     if (event.button !== 0 || !event.isPrimary) return;
-    event.preventDefault(); count();
+    event.preventDefault(); press(); count();
   });
-  button.addEventListener('click', event => { if (event.detail === 0 && !event.pointerType) count(); });
+  for (const type of ['pointerup', 'pointercancel', 'pointerleave']) button.addEventListener(type, release);
+  button.addEventListener('click', event => { if (event.detail === 0 && !event.pointerType) { press(); release(); count(); } });
 });
 document.querySelectorAll('[data-undo]').forEach(button => button.addEventListener('click', () => {
   const event = active(events).findLast(e => e.kind === button.dataset.undo && dayOf(e.at) === today); if (event) cancelEvent(event);
 }));
 document.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => {
   const dialog = document.getElementById(button.dataset.open); dialog.showModal(); render();
+  if (dialog.id === 'call-dialog') showCallSettings();
   if (dialog.id === 'shift-dialog') showShift().catch(e => { $('#shift-status').textContent = `読込失敗：${e.message}`; });
 }));
 document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
@@ -169,6 +171,42 @@ $('#shift-file').addEventListener('change', async event => {
     await showShift(); channel?.postMessage('shift-updated'); status('シフト表を端末内に保存しました');
   } catch (e) { $('#shift-status').textContent = `保存失敗：${e?.message || '不明なエラー'}。保存済みの画像は保持しています。`; }
   finally { if (candidateUrl) URL.revokeObjectURL(candidateUrl); event.target.disabled = false; event.target.value = ''; }
+});
+// Staff call: the device holds the Apps Script URL and passcode; the recipient lives only in the script.
+const callSettingsKey = 'entrance-counter-call';
+const callUrlPattern = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
+function callSettings() {
+  try { const value = JSON.parse(localStorage.getItem(callSettingsKey) || 'null'); return value && callUrlPattern.test(value.url) && value.key ? value : null; } catch { return null; }
+}
+function showCallSettings() {
+  const settings = callSettings();
+  $('#call-url').value = settings?.url || ''; $('#call-key').value = settings?.key || '';
+  $('#call-settings').open = !settings;
+  $('#call-status').textContent = settings ? '' : '送信設定がまだありません。下の送信設定を入力してください。';
+}
+$('#call-settings-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const url = $('#call-url').value.trim(), key = $('#call-key').value;
+  if (!callUrlPattern.test(url)) { $('#call-status').textContent = 'URLは https://script.google.com/macros/s/…/exec の形式で入力してください。'; return; }
+  try { localStorage.setItem(callSettingsKey, JSON.stringify({ url, key })); } catch { $('#call-status').textContent = '設定を保存できませんでした。'; return; }
+  $('#call-settings').open = false; $('#call-status').textContent = '送信設定を保存しました。';
+});
+$('#call-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const text = $('#call-input').value.trim(), settings = callSettings(), button = event.target.querySelector('button');
+  if (!text) return;
+  if (!settings) { $('#call-settings').open = true; $('#call-status').textContent = '先に送信設定を保存してください。'; return; }
+  button.disabled = true; $('#call-status').textContent = '送信中…';
+  const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 20000);
+  try {
+    // text/plain keeps this a simple request, which Apps Script accepts without a CORS preflight.
+    const response = await fetch(settings.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key: settings.key, text, staff: currentStaff(events), at: new Date().toISOString() }), signal: abort.signal });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw Error(result.error || `応答 ${response.status}`);
+    $('#call-input').value = ''; $('#call-status').textContent = `送信しました（${timeOf(new Date().toISOString()).slice(0, 5)}）。`; status('山本へ連絡を送信しました');
+  } catch (e) {
+    $('#call-status').textContent = `送信失敗：${e.name === 'AbortError' ? '時間切れ' : e.message || '通信できませんでした'}。要件は残っています。`;
+  } finally { clearTimeout(timer); button.disabled = false; }
 });
 function download(text, extension, suffix) {
   const blob = new Blob([text], { type: extension === 'json' ? 'application/json' : 'text/csv;charset=utf-8' });
