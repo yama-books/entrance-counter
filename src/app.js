@@ -64,7 +64,7 @@ function render() {
   const values = chartBins.flatMap(b => paired ? [b.entry, b.akarenga] : [b[chartKind]]);
   const max = Math.max(4, Math.ceil(Math.max(0, ...values) * 1.35 / 4) * 4);
   $('#chart-description').textContent = `${paired ? '2日間通算・' : ''}${interval === 60 ? '1時間' : `${interval}分`}ごとの${paired ? '入場・赤煉瓦' : chartKind === 'entry' ? '人数' : '件数'}`;
-  $('#chart-help').textContent = paired ? '2日間通算：若草＝入場／煉瓦色＝赤煉瓦・横スクロール可' : '棒をタップして詳細を確認・横スクロール可';
+  $('#chart-help').textContent = paired ? '2日間通算：左＝入場／右＝赤煉瓦・横スクロール可' : '棒をタップして詳細を確認・横スクロール可';
   $('#chart-axis').replaceChildren(...[4, 3, 2, 1, 0].map(step => node('span', max * step / 4)));
   $('#chart').classList.toggle('fine-interval', interval <= 15);
   $('#chart').dataset.series = chartKind;
