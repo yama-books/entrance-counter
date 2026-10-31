@@ -257,6 +257,9 @@ try {
     await route.fulfill({status:200,contentType:'application/json',headers:{'Access-Control-Allow-Origin':'*'},body:JSON.stringify(callReply)});
   });
   await page.locator('#call-top').click();
+  assert.equal(await page.locator('#call-staff').inputValue(), 'テスト担当B');
+  assert.equal(await page.locator('#call-staff').getAttribute('readonly'), null);
+  await page.locator('#call-staff').fill('');
   assert.equal(await page.locator('#call-dialog #call-key').count(),0);
   assert.equal(await page.locator('#call-url').count(),0);
   await page.locator('#call-input').fill('受付に来てください');
@@ -274,6 +277,8 @@ try {
   assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('entrance-counter-call'))),{key:'test-pass'});
   await page.locator('#settings-dialog [data-close]').click();
   await page.locator('#call-top').click();
+  assert.equal(await page.locator('#call-staff').inputValue(), 'テスト担当B');
+  await page.locator('#call-staff').fill('図書館担当');
   await page.locator('#call-form button').click();
   await page.waitForFunction(()=>document.querySelector('#call-status').textContent.startsWith('送信しました'));
   assert.equal(calls.length,1);
@@ -300,6 +305,150 @@ try {
   await page.locator('#call-dialog [data-close]').click();
   await page.unroute('https://script.google.com/**');
   console.log('PASS fixed GAS URL, explicit staff name, Settings-only password and failure retention');
+  const forecastContext = await browser.newContext({ viewport: { width: 1194, height: 834 }, acceptDownloads: true });
+  const fp = await forecastContext.newPage(); await fp.clock.setFixedTime(new Date('2026-10-31T10:00:00+09:00')); await fp.goto(url);
+  await fp.waitForFunction(() => !document.querySelector('#forecast-top').disabled);
+  await fp.locator('#forecast-top').click(); await fp.waitForFunction(() => !document.querySelector('#prediction-open').disabled);
+  await fp.locator('#prediction-open').click(); assert.equal(await fp.locator('#prediction-staff').inputValue(), '');
+  await fp.locator('#forecast-dialog [data-close]').click();
+  await fp.locator('#staff-top').click(); await fp.locator('#staff-input').fill('架空予測A'); await fp.locator('#staff-form button').click();
+  await fp.waitForFunction(() => !document.querySelector('#staff-dialog').open);
+  for (let i = 0; i < 2; i++) await fp.locator('[data-kind="entry"]').click();
+  await fp.waitForFunction(() => document.querySelector('#entry-total').textContent === '2');
+  await fp.locator('#forecast-top').click(); await fp.waitForFunction(() => !document.querySelector('#prediction-open').disabled);
+  assert.equal(await fp.locator('#forecast-estimate').textContent(), '15人');
+  assert.equal(await fp.locator('#prediction-list tr').count(), 0);
+  await fp.locator('#prediction-open').click(); assert.equal(await fp.locator('#prediction-staff').inputValue(), '架空予測A');
+  await fp.locator('#prediction-count').fill('123'); await fp.locator('#prediction-submit').click();
+  await fp.waitForFunction(() => document.querySelector('#prediction-status').textContent.includes('保存しました'));
+  assert.ok((await fp.locator('#prediction-status').textContent()).includes('架空予測A'));
+  await fp.locator('#forecast-dialog [data-close]').click();
+  await fp.locator('#staff-top').click(); await fp.locator('#staff-input').fill('架空予測B'); await fp.locator('#staff-form button').click();
+  await fp.waitForFunction(() => !document.querySelector('#staff-dialog').open);
+  await fp.locator('#forecast-top').click(); await fp.waitForFunction(() => !document.querySelector('#prediction-open').disabled);
+  assert.equal(await fp.locator('#prediction-list tr').count(), 0);
+  await fp.locator('#prediction-open').click(); assert.equal(await fp.locator('#prediction-staff').inputValue(), '架空予測B');
+  await fp.locator('#prediction-count').fill('234');
+  await fp.evaluate(() => {
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (...args) { IDBObjectStore.prototype.put = put; throw new DOMException('Test prediction failure', 'QuotaExceededError'); };
+  });
+  await fp.locator('#prediction-submit').click(); await fp.waitForFunction(() => document.querySelector('#prediction-status').textContent.includes('保存失敗'));
+  assert.equal(await fp.locator('#prediction-count').inputValue(), '234');
+  assert.equal(await fp.locator('#prediction-staff').inputValue(), '架空予測B');
+  assert.equal(await fp.locator('#prediction-list tr').count(), 0);
+  await fp.locator('#prediction-submit').click(); await fp.waitForFunction(() => document.querySelector('#prediction-status').textContent.includes('保存しました'));
+  assert.ok((await fp.locator('#prediction-list').textContent()).includes('架空予測A'));
+  assert.ok(!(await fp.locator('#prediction-list').textContent()).includes('架空予測B'));
+  assert.ok((await fp.locator('#prediction-list').textContent()).includes('123人'));
+  for (const [width, height] of [[1024,768],[768,1024],[390,844]]) {
+    await fp.setViewportSize({ width, height }); assert.ok(await fp.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    assert.ok(await fp.locator('#forecast-dialog').evaluate(el => el.scrollWidth <= el.clientWidth));
+  }
+  await fp.locator('#forecast-dialog [data-close]').click(); await fp.reload();
+  await fp.waitForFunction(() => !document.querySelector('#forecast-top').disabled);
+  await fp.locator('#forecast-top').click(); await fp.waitForFunction(() => !document.querySelector('#prediction-open').disabled);
+  assert.equal(await fp.locator('#prediction-list tr').count(), 0);
+  await fp.locator('#forecast-dialog [data-close]').click();
+  await fp.locator('[data-open="data-dialog"]').click();
+  const forecastDownload = fp.waitForEvent('download'); await fp.locator('#export-json').click();
+  const forecastBackup = JSON.parse(await readFile(await (await forecastDownload).path(), 'utf8'));
+  assert.equal(forecastBackup.predictions.length, 2); assert.deepEqual(forecastBackup.predictions.map(p => p.staff), ['架空予測A','架空予測B']);
+  const forecastCSV = fp.waitForEvent('download'); await fp.locator('#export-predictions').click();
+  assert.ok((await readFile(await (await forecastCSV).path(), 'utf8')).includes('架空予測A'));
+  await fp.locator('#data-dialog [data-close]').click();
+  const predictionStorage = await fp.evaluate(async () => {
+    const s = await import('/src/storage.js'), db = await s.openStore(), before = await s.readPredictions(db), eventsBefore = await s.read(db);
+    await s.savePrediction(db, before[1]);
+    let conflict = false, midnight = false;
+    try { await s.write(db, { type: 'restore', events: [...eventsBefore, { id:'should-rollback', kind:'entry', at:new Date().toISOString(), staff:'架空担当' }], predictions: [{ ...before[0], count: 1 }] }); } catch { conflict = true; }
+    try { await s.savePrediction(db, { ...before[0], id:'wrong-date', date:'2026-10-30', at:'2026-10-30T10:00:00+09:00' }); } catch { midnight = true; }
+    await s.write(db, { type:'restore', events:eventsBefore });
+    const result = { once:(await s.readPredictions(db)).length === 2, conflict, midnight, unchanged:JSON.stringify(eventsBefore) === JSON.stringify(await s.read(db)), retained:JSON.stringify(before) === JSON.stringify(await s.readPredictions(db)) }; db.close(); return result;
+  });
+  assert.deepEqual(predictionStorage, { once:true, conflict:true, midnight:true, unchanged:true, retained:true });
+  const predictionFresh = await browser.newContext({ viewport: { width: 390, height: 844 } }), restoredForecast = await predictionFresh.newPage();
+  await restoredForecast.clock.setFixedTime(new Date('2026-10-31T10:00:00+09:00')); await restoredForecast.goto(url);
+  await restoredForecast.waitForFunction(() => !document.querySelector('#forecast-top').disabled);
+  await restoredForecast.locator('[data-open="data-dialog"]').click();
+  await restoredForecast.locator('#restore').setInputFiles({ name:'forecast-backup.json', mimeType:'application/json', buffer:Buffer.from(JSON.stringify(forecastBackup)) });
+  await restoredForecast.locator('#confirm-yes').click(); await restoredForecast.waitForFunction(() => document.querySelector('#status').textContent.includes('復元を保存'));
+  assert.equal(await restoredForecast.evaluate(async () => { const s=await import('/src/storage.js'),db=await s.openStore();const n=(await s.readPredictions(db)).length;db.close();return n; }), 2);
+  await predictionFresh.close(); await forecastContext.close();
+  console.log('PASS visitor forecast pace, staff prefill, saved-only prior predictions, save failure/retry, reload privacy, JSON/CSV and fresh restore, atomic conflict rollback, idempotence, old backup retention, midnight rejection and responsive dialog');
+  const closingContext = await browser.newContext({ viewport: { width: 1024, height: 768 }, acceptDownloads: true });
+  const cp = await closingContext.newPage(); await cp.clock.setFixedTime(new Date('2026-10-31T16:30:00+09:00')); await cp.goto(url + '/src/model.js');
+  await cp.evaluate(() => new Promise((resolve, reject) => {
+    const request = indexedDB.open('entrance-counter-v1', 1); request.onupgradeneeded = () => request.result.createObjectStore('state'); request.onerror = () => reject(request.error);
+    request.onsuccess = () => { const db = request.result, tx = db.transaction('state','readwrite'); tx.objectStore('state').put([
+      {id:'old-staff',kind:'staff',at:'2026-10-31T09:00:00+09:00',staff:'移行テスト担当'},
+      {id:'old-entry',kind:'entry',at:'2026-10-31T10:00:00+09:00',staff:'移行テスト担当'},
+      {id:'old-brick',kind:'akarenga',at:'2026-10-31T10:00:00+09:00',staff:'移行テスト担当'}
+    ],'events'); tx.oncomplete = () => { db.close(); resolve(); }; tx.onerror = () => reject(tx.error); };
+  }));
+  await cp.goto(url); await cp.waitForFunction(() => !document.querySelector('#forecast-top').disabled);
+  assert.equal(await cp.locator('#entry-total').textContent(), '1');
+  assert.ok(await cp.evaluate(() => new Promise(resolve => { const r=indexedDB.open('entrance-counter-v1',1);r.onerror=()=>resolve(r.error.name==='VersionError');r.onsuccess=()=>{r.result.close();resolve(false);}; })));
+  const closeDayUI = async (date) => { await cp.locator(`[data-finalize="${date}"]`).click(); await cp.locator('#confirm-yes').click(); await cp.waitForFunction(() => !document.querySelector('#day-results-dialog [data-close]').disabled); };
+  await cp.locator('[data-open="day-results-dialog"]').click();
+  assert.equal(await cp.locator('[data-finalize="2026-11-01"]').isDisabled(), true);
+  await cp.evaluate(() => { const put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(...args){IDBObjectStore.prototype.put=put;throw new DOMException('Test close failure','QuotaExceededError');}; });
+  await closeDayUI('2026-10-31'); assert.ok((await cp.locator('#day-results-status').textContent()).includes('保存失敗'));
+  assert.equal(await cp.locator('[data-kind="entry"]').isDisabled(), false);
+  await closeDayUI('2026-10-31');
+  assert.equal(await cp.locator('[data-kind="entry"]').isDisabled(), true);
+  assert.equal(await cp.locator('[data-undo="entry"]').isDisabled(), true);
+  const locked = await cp.evaluate(async () => {
+    const s=await import('/src/storage.js'),db=await s.openStore(),before=await s.read(db);let add=false,cancel=false,restore=false;
+    try{await s.write(db,{id:'blocked-add',kind:'entry',at:new Date().toISOString()});}catch{add=true;}
+    try{await s.write(db,{id:'blocked-cancel',kind:'cancel',at:new Date().toISOString(),target:'old-entry'});}catch{cancel=true;}
+    try{await s.write(db,{type:'restore',events:[...before,{id:'blocked-restore',kind:'entry',at:new Date().toISOString(),staff:'架空担当'}]});}catch{restore=true;}
+    const unchanged=JSON.stringify(before)===JSON.stringify(await s.read(db));db.close();return {add,cancel,restore,unchanged};
+  });
+  assert.deepEqual(locked,{add:true,cancel:true,restore:true,unchanged:true});
+  await closeDayUI('2026-10-31'); assert.equal(await cp.locator('[data-kind="entry"]').isDisabled(),false);
+  await cp.locator('#day-results-dialog [data-close]').click(); await cp.locator('[data-kind="entry"]').click();
+  await cp.waitForFunction(() => document.querySelector('#entry-total').textContent==='2');
+  await cp.locator('[data-open="day-results-dialog"]').click(); await closeDayUI('2026-10-31'); await cp.locator('#day-results-dialog [data-close]').click();
+  await cp.clock.setFixedTime(new Date('2026-11-01T10:00:00+09:00')); await cp.reload(); await cp.waitForFunction(() => !document.querySelector('#forecast-top').disabled);
+  assert.equal(await cp.locator('#entry-total').textContent(),'0');
+  assert.ok((await cp.locator('#entry-event-total').textContent()).includes('2人'));
+  await cp.locator('#previous-day-button').click(); assert.ok((await cp.locator('#previous-day-summary').textContent()).includes('入場 2人'));
+  assert.ok((await cp.locator('#previous-day-records').textContent()).includes('移行テスト担当')); await cp.locator('#previous-day-dialog [data-close]').click();
+  for(let i=0;i<3;i++) await cp.locator('[data-kind="entry"]').click(); for(let i=0;i<2;i++) await cp.locator('[data-kind="akarenga"]').click();
+  await cp.waitForFunction(() => document.querySelector('#entry-total').textContent==='3'&&document.querySelector('#akarenga-total').textContent==='2');
+  assert.ok((await cp.locator('#entry-event-total').textContent()).includes('5人'));
+  assert.ok((await cp.locator('#akarenga-event-total').textContent()).includes('3冊'));
+  await cp.locator('#forecast-top').click(); await cp.waitForFunction(() => !document.querySelector('#prediction-open').disabled);
+  assert.equal(await cp.locator('#forecast-estimate').textContent(),'23人'); assert.equal(await cp.locator('#forecast-combined').textContent(),'25人'); await cp.locator('#forecast-dialog [data-close]').click();
+  await cp.locator('#interval').selectOption('30'); await cp.locator('[data-chart="combined"]').click();
+  assert.equal(await cp.locator('.bar-group').count(),15); assert.equal(await cp.locator('#chart .bar').count(),30);
+  await cp.locator('#chart').focus(); await cp.keyboard.press('Home'); await cp.keyboard.press('ArrowRight'); await cp.keyboard.press('ArrowRight');
+  assert.equal(await cp.locator('#chart-value').textContent(),'入場 4人／赤煉瓦 3冊');
+  const pairColors=await cp.locator('.bar-group').first().locator('.bar').evaluateAll(bars=>bars.map(b=>getComputedStyle(b).backgroundColor)); assert.notEqual(pairColors[0],pairColors[1]);
+  for(const [width,height] of [[1194,834],[1024,768],[390,844]]){await cp.setViewportSize({width,height});assert.ok(await cp.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
+  await cp.setViewportSize({width:1024,height:768});
+  await cp.screenshot({ path:'test-results/two-day-counter.png', fullPage:true });
+  await cp.locator('[data-chart="entry"]').click();
+  await cp.locator('[data-open="day-results-dialog"]').click(); await closeDayUI('2026-11-01');
+  assert.ok((await cp.locator('#event-final-summary').textContent()).includes('入場 5人／赤煉瓦 3冊'));
+  await closeDayUI('2026-11-01');
+  const raced=await cp.evaluate(async()=>{
+    const s=await import('/src/storage.js'),m=await import('/src/event-days.js'),db=await s.openStore(),before=await s.read(db);
+    const r=await Promise.allSettled([s.write(db,{id:'race-entry',kind:'entry',at:new Date().toISOString()}),s.saveDayResult(db,{id:'stale-close',kind:'close',date:'2026-11-01',expectedIds:m.dayRecordIds(before,'2026-11-01')})]);db.close();return r.map(x=>x.status);
+  }); assert.deepEqual(raced,['fulfilled','rejected']);
+  await cp.reload(); await cp.waitForFunction(() => !document.querySelector('#forecast-top').disabled);
+  assert.equal(await cp.locator('#entry-total').textContent(),'4'); assert.equal(await cp.locator('[data-kind="entry"]').isDisabled(),false);
+  await cp.locator('[data-open="day-results-dialog"]').click(); await closeDayUI('2026-11-01');
+  assert.ok((await cp.locator('#event-final-summary').textContent()).includes('入場 6人／赤煉瓦 3冊')); await cp.locator('#day-results-dialog [data-close]').click();
+  await cp.locator('[data-open="data-dialog"]').click();const closedDownload=cp.waitForEvent('download');await cp.locator('#export-json').click();
+  const closedBackup=JSON.parse(await readFile(await (await closedDownload).path(),'utf8'));assert.equal(closedBackup.dayResults.length,6);
+  const restoredClosingContext=await browser.newContext(),rc=await restoredClosingContext.newPage();await rc.clock.setFixedTime(new Date('2026-11-01T11:00:00+09:00'));await rc.goto(url);await rc.waitForFunction(()=>!document.querySelector('#forecast-top').disabled);
+  await rc.locator('[data-open="data-dialog"]').click();await rc.locator('#restore').setInputFiles({name:'closed-backup.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(closedBackup))});await rc.locator('#confirm-yes').click();
+  await rc.waitForFunction(()=>document.querySelector('#status').textContent.includes('復元を保存'));assert.equal(await rc.locator('[data-kind="entry"]').isDisabled(),true);
+  assert.ok(await rc.evaluate(async()=>{const s=await import('/src/storage.js'),db=await s.openStore(),before=await s.readDayResults(db),events=await s.read(db);await s.write(db,{type:'restore',events});const same=JSON.stringify(before)===JSON.stringify(await s.readDayResults(db));db.close();return same;}));
+  await restoredClosingContext.close();await closingContext.close();
+  console.log('PASS v1 to v2 data retention/old-version rejection, close failure/retry, backend add/cancel/restore locks, unlock/reclose history, prior day display, second-day cumulative counters and forecast, paired-color 2-day chart, count-vs-close race, atomic snapshot backup and closed-state restore');
   // Theme picker: five palettes, choice persists on the device.
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'ivory-brick');
   assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), 'rgb(250, 250, 246)');
