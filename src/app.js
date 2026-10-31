@@ -6,6 +6,7 @@ const $ = selector => document.querySelector(selector);
 let db, events = [], chartKind = 'entry', historyLimit = 100, queue = Promise.resolve(), pending = 0;
 let selectedDay = dayOf(new Date()), today = selectedDay;
 let chartMinute = null, chartDay = today, chartBins = [];
+let chartStart = 0, chartEnd = 1440;
 const status = (text, error = false) => { $('#status').textContent = text; $('#status').classList.toggle('error', error); };
 const node = (tag, text, className) => { const el = document.createElement(tag); el.textContent = text; if (className) el.className = className; return el; };
 const stamp = at => `${dayOf(at)} ${timeOf(at)}`;
@@ -38,21 +39,37 @@ function render() {
     updateNumber(kind, data.totals[kind]);
     $(`[data-undo="${kind}"]`).disabled = !active(events).some(e => e.kind === kind && dayOf(e.at) === today);
   }
-  const max = Math.max(4, Math.ceil(Math.max(0, ...data.bins.map(b => b[chartKind])) / 4) * 4);
+  const daytime = $('#chart-range').value === 'daytime';
+  chartStart = daytime ? 540 : 0; chartEnd = daytime ? 990 : 1440;
+  const viewEvents = daytime ? events.filter(e => {
+    if (!['entry', 'akarenga'].includes(e.kind)) return true;
+    const [hour, minute] = timeOf(e.at).split(':').map(Number);
+    return hour * 60 + minute >= chartStart && hour * 60 + minute < chartEnd;
+  }) : events;
+  chartBins = summary(viewEvents, today, interval).bins.map((bin, i) => ({ ...bin, start: i * interval, end: Math.min((i + 1) * interval, chartEnd) })).filter(bin => bin.start >= chartStart && bin.start < chartEnd);
+  const max = Math.max(4, Math.ceil(Math.max(0, ...chartBins.map(b => b[chartKind])) * 1.2 / 4) * 4);
   $('#chart-description').textContent = `${interval === 60 ? '1時間' : `${interval}分`}ごとの${chartKind === 'entry' ? '人数' : '件数'}`;
   $('#chart-axis').replaceChildren(...[4, 3, 2, 1, 0].map(step => node('span', max * step / 4)));
   $('#chart').classList.toggle('fine-interval', interval <= 15);
   $('#chart').dataset.series = chartKind;
-  $('#chart').style.setProperty('--bins', data.bins.length);
-  $('#chart').replaceChildren(...data.bins.map(b => {
-    const el = node('div', '', 'bar'); el.style.height = `${b[chartKind] / max * 100}%`; el.title = `${b.time} ${labels[chartKind]} ${b[chartKind]}`; return el;
+  $('#chart').style.gridTemplateColumns = chartBins.map(bin => `${bin.end - bin.start}fr`).join(' ');
+  $('#chart').classList.toggle('show-values', interval >= 15);
+  const labelWidth = Math.max(12, String(Math.max(...chartBins.map(b => b[chartKind]))).length * 6 + 2);
+  $('.chart-surface').style.minWidth = interval >= 15 ? `${28 + (chartEnd - chartStart) / Math.min(...chartBins.map(b => b.end - b.start)) * labelWidth}px` : '0';
+  $('#chart').style.touchAction = interval >= 15 ? 'auto' : 'pan-y';
+  $('#chart').replaceChildren(...chartBins.map(b => {
+    const el = node('div', '', 'bar'); el.style.height = `${b[chartKind] / max * 100}%`; el.title = `${b.time} ${labels[chartKind]} ${b[chartKind]}`;
+    if (interval >= 15 && b[chartKind] > 0) el.append(node('span', b[chartKind], 'bar-value'));
+    return el;
   }));
-  chartBins = data.bins;
+  $('.chart-labels').replaceChildren(...(daytime ? [[540, '9:00'], [660, '11:00'], [780, '13:00'], [900, '15:00'], [990, '16:30']] : [[0, '0時'], [360, '6時'], [720, '12時'], [1080, '18時'], [1440, '24時']]).map(([minute, text]) => {
+    const tick = node('span', text); tick.style.left = `${(minute - chartStart) / (chartEnd - chartStart) * 100}%`; return tick;
+  }));
   if (chartDay !== today) { chartMinute = null; chartDay = today; }
-  if (chartMinute === null) {
-    const latest = data.bins.findLastIndex(b => b[chartKind] > 0);
+  if (chartMinute === null || chartMinute < chartStart || chartMinute >= chartEnd) {
+    const latest = chartBins.findLast(b => b[chartKind] > 0);
     const clock = timeOf(new Date()).split(':').map(Number);
-    chartMinute = latest >= 0 ? latest * interval : clock[0] * 60 + clock[1];
+    chartMinute = latest ? latest.start : Math.max(chartStart, Math.min(chartEnd - 1, clock[0] * 60 + clock[1]));
   }
   $('#chart').setAttribute('aria-label', `${today} ${labels[chartKind]}、${interval}分ごとの時間帯を選択`);
   showChartSelection();
@@ -76,15 +93,15 @@ function render() {
 }
 function showChartSelection() {
   if (!chartBins.length) return;
-  const interval = Number($('#interval').value), index = Math.min(chartBins.length - 1, Math.floor(chartMinute / interval));
-  const bin = chartBins[index], end = (index + 1) * interval;
+  const index = chartBins.findIndex(bin => chartMinute >= bin.start && chartMinute < bin.end);
+  const bin = chartBins[index], end = bin.end;
   const endTime = `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
   const range = `${bin.time}〜${endTime}`, value = `${labels[chartKind]} ${bin[chartKind]}${chartKind === 'entry' ? '人' : '冊'}`;
   $('#chart-time').textContent = range;
   $('#chart-value').textContent = value;
   const chart = $('#chart');
   chart.querySelectorAll('.bar').forEach((bar, i) => bar.classList.toggle('selected', i === index));
-  chart.style.setProperty('--selection', `${(index + .5) / chartBins.length * 100}%`);
+  chart.style.setProperty('--selection', `${((bin.start + bin.end) / 2 - chartStart) / (chartEnd - chartStart) * 100}%`);
   chart.setAttribute('aria-valuemax', chartBins.length - 1);
   chart.setAttribute('aria-valuenow', index);
   chart.setAttribute('aria-valuetext', `${range} ${value}`);
@@ -164,27 +181,32 @@ document.querySelectorAll('[data-chart]').forEach(button => button.addEventListe
   document.querySelectorAll('[data-chart]').forEach(b => { b.classList.toggle('selected', b === button); b.setAttribute('aria-pressed', String(b === button)); }); render();
 }));
 $('#interval').addEventListener('change', render);
+$('#chart-range').addEventListener('change', () => { render(); $('.chart-scroll').scrollLeft = 0; });
 const chart = $('#chart');
-function selectChartAt(clientX) {
+function selectChartAt(clientX, clientY) {
   if (!chartBins.length) return;
-  const box = chart.getBoundingClientRect();
-  const index = Math.max(0, Math.min(chartBins.length - 1, Math.floor((clientX - box.left - chart.clientLeft) / chart.clientWidth * chartBins.length)));
-  chartMinute = index * Number($('#interval').value);
+  const index = [...chart.querySelectorAll('.bar')].findIndex((bar, i) => {
+    if (!chartBins[i][chartKind]) return false;
+    const box = bar.getBoundingClientRect(), label = bar.querySelector('.bar-value');
+    return clientX >= box.left && clientX <= box.right && clientY >= (label ? label.getBoundingClientRect().top : box.top) && clientY <= box.bottom;
+  });
+  if (index < 0) return;
+  chartMinute = chartBins[index].start;
   showChartSelection();
 }
 let chartPointer = null;
 chart.addEventListener('pointerdown', event => {
   if (event.button !== 0 || !event.isPrimary) return;
   chartPointer = event.pointerId; chart.setPointerCapture(event.pointerId);
-  selectChartAt(event.clientX);
+  selectChartAt(event.clientX, event.clientY);
 });
-chart.addEventListener('pointermove', event => { if (event.pointerId === chartPointer) selectChartAt(event.clientX); });
+chart.addEventListener('pointermove', event => { if (event.pointerId === chartPointer) selectChartAt(event.clientX, event.clientY); });
 for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) chart.addEventListener(type, () => { chartPointer = null; });
 chart.addEventListener('keydown', event => {
   const index = Number(chart.getAttribute('aria-valuenow'));
   const next = { ArrowLeft: index - 1, ArrowDown: index - 1, ArrowRight: index + 1, ArrowUp: index + 1, Home: 0, End: chartBins.length - 1 }[event.key];
   if (next === undefined || !chartBins.length) return;
-  event.preventDefault(); chartMinute = Math.max(0, Math.min(chartBins.length - 1, next)) * Number($('#interval').value); showChartSelection();
+  event.preventDefault(); chartMinute = chartBins[Math.max(0, Math.min(chartBins.length - 1, next))].start; showChartSelection();
 });
 $('#summary-day').value = selectedDay;
 $('#summary-day').addEventListener('change', () => { if ($('#summary-day').value) selectedDay = $('#summary-day').value; renderSummary(); });

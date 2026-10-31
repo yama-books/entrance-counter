@@ -48,6 +48,7 @@ try {
   await page.locator('[data-open="history-dialog"]').click();
   assert.ok((await page.locator('#all-history .memo-record').textContent()).includes('架空メモ <script> test'));
   await page.locator('#history-dialog [data-close]').click();
+  await page.locator('#chart-range').selectOption('all');
   for (const minutes of [5, 15, 30, 60]) {
     await page.locator('#interval').selectOption(String(minutes));
     assert.equal(await page.locator('#chart .bar').count(), 1440 / minutes);
@@ -57,7 +58,7 @@ try {
   }
   await page.locator('#interval').selectOption('5');
   console.log('PASS highlighted handoff body in recent/full history and pinned latest; all four aggregation intervals');
-  // Fixed readout: select even empty bins, preserve time on interval/category switches.
+  // Fixed readout: keyboard can inspect zero bins; pointer ignores empty regions.
   const chartBefore = await page.locator('#entry-total').textContent();
   await page.locator('#interval').selectOption('15');
   assert.ok((await page.locator('#chart-description').textContent()).includes('15分ごと'));
@@ -73,8 +74,11 @@ try {
   await page.locator('[data-chart="akarenga"]').click();
   assert.ok((await page.locator('#chart-value').textContent()).startsWith('赤煉瓦 '));
   const plot = await page.locator('#chart').boundingBox();
+  const beforeBlankDrag = await page.locator('#chart-time').textContent();
   await page.mouse.move(plot.x + 2, plot.y + 10); await page.mouse.down();
   await page.mouse.move(plot.x + plot.width - 2, plot.y + 10, { steps: 8 }); await page.mouse.up();
+  assert.equal(await page.locator('#chart-time').textContent(), beforeBlankDrag);
+  await page.locator('#chart').focus(); await page.keyboard.press('End');
   assert.equal(await page.locator('#chart-time').textContent(), '23:45〜24:00');
   assert.equal(await page.locator('.bar.selected').count(), 1);
   assert.ok((await page.locator('#chart').getAttribute('aria-valuetext')).includes('23:45〜24:00 赤煉瓦'));
@@ -90,6 +94,41 @@ try {
   assert.ok(chosen.includes((await page.locator('#chart-value').textContent()).replace(/人$/, '')));
   assert.equal(bins, 96);
   console.log('PASS chart fixed range/value readout, interval time preservation, category switch, drag/end bounds, keyboard and no counting side effects');
+  const focusedContext = await browser.newContext({ viewport: { width: 1194, height: 834 } });
+  const focused = await focusedContext.newPage(); await focused.clock.setFixedTime(new Date('2026-10-31T21:00:00+09:00')); await focused.goto(url);
+  await focused.waitForFunction(() => !document.querySelector('[data-kind]').disabled);
+  await focused.evaluate(async () => {
+    const store = await import('/src/storage.js'), db = await store.openStore();
+    const events = []; let id = 0;
+    for (const [time, count, kind] of [['09:00',2,'entry'],['09:15',12,'entry'],['16:29',3,'entry'],['16:30',7,'entry'],['21:00',4,'entry'],['16:29',2,'akarenga'],['16:30',5,'akarenga']]) {
+      for (let i = 0; i < count; i++) events.push({ id: `chart-fixture-${id++}`, at: `2026-10-31T${time}:00+09:00`, kind, staff: '架空担当' });
+    }
+    await store.write(db, { type: 'restore', events }); db.close();
+  });
+  await focused.reload(); await focused.waitForFunction(() => document.querySelector('#entry-total').textContent === '28');
+  assert.equal(await focused.locator('#chart-range').inputValue(), 'daytime');
+  await focused.locator('#interval').selectOption('15');
+  assert.equal(await focused.locator('.bar').count(), 30);
+  assert.deepEqual(await focused.locator('.bar-value').allTextContents(), ['2','12','3']);
+  await focused.locator('.bar-value').nth(1).click();
+  assert.equal(await focused.locator('#chart-time').textContent(), '09:15〜09:30');
+  assert.equal(await focused.locator('#chart-value').textContent(), '入場 12人');
+  const labelA = await focused.locator('.bar-value').nth(0).boundingBox(), labelB = await focused.locator('.bar-value').nth(1).boundingBox();
+  assert.ok(labelA.x + labelA.width < labelB.x, 'adjacent values do not overlap');
+  for (const interval of ['30', '60']) {
+    await focused.locator('#interval').selectOption(interval); await focused.locator('#chart').focus(); await focused.keyboard.press('End');
+    assert.equal(await focused.locator('#chart-time').textContent(), '16:00〜16:30');
+    assert.equal(await focused.locator('#chart-value').textContent(), '入場 3人');
+  }
+  await focused.locator('[data-chart="akarenga"]').click();
+  assert.equal(await focused.locator('#chart-value').textContent(), '赤煉瓦 2冊');
+  await focused.locator('#chart-range').selectOption('all');
+  assert.equal(await focused.locator('#chart-time').textContent(), '16:00〜17:00');
+  assert.equal(await focused.locator('#chart-value').textContent(), '赤煉瓦 7冊');
+  assert.equal(await focused.locator('#entry-total').textContent(), '28');
+  assert.equal(await focused.locator('#akarenga-total').textContent(), '7');
+  await focusedContext.close();
+  console.log('PASS daytime 30 quarter-hour bars, direct nonzero labels without overlap, 16:30 cutoff including partial hour, full-day restoration and unchanged daily totals');
   await page.locator('[data-open="data-dialog"]').click();
   const downloaded = page.waitForEvent('download'); await page.locator('#export-json').click(); const download = await downloaded;
   const backup = JSON.parse(await readFile(await download.path(), 'utf8'));
@@ -142,7 +181,7 @@ try {
   console.log('PASS IndexedDB idempotence, invalid transaction rollback, closed DB rejection');
   // A contact must save before release; the following synthetic click must not add again.
   const touchContext = await browser.newContext({ hasTouch: true, viewport: { width: 1194, height: 834 } });
-  const touch = await touchContext.newPage(); await touch.goto(url); await touch.waitForFunction(() => !document.querySelector('[data-kind]').disabled);
+  const touch = await touchContext.newPage(); await touch.clock.setFixedTime(new Date('2026-10-31T21:00:00+09:00')); await touch.goto(url); await touch.waitForFunction(() => !document.querySelector('[data-kind]').disabled);
   await touch.evaluate(() => {
     window.numberMotions = [];
     const animate = Element.prototype.animate;
@@ -164,10 +203,17 @@ try {
   assert.equal(await touch.evaluate(() => window.numberMotions.length), motions);
   await touch.reload(); await touch.waitForFunction(() => document.querySelector('#entry-total').textContent === '5');
   await touch.locator('#interval').selectOption('15');
+  assert.equal(await touch.locator('.bar').count(), 30);
+  assert.equal(await touch.locator('.bar-value').count(), 0, 'night records are outside daytime chart');
+  const touchSelection = await touch.locator('#chart-time').textContent();
   await touch.locator('#chart').tap({ position: { x: 2, y: 10 } });
-  assert.equal(await touch.locator('#chart-time').textContent(), '00:00〜00:15');
+  assert.equal(await touch.locator('#chart-time').textContent(), touchSelection);
   assert.equal(await touch.locator('#entry-total').textContent(), '5');
-  assert.equal(await touch.locator('#chart').evaluate(el => getComputedStyle(el).touchAction), 'pan-y');
+  await touch.locator('#chart-range').selectOption('all');
+  await touch.locator('.bar-value').tap();
+  assert.equal(await touch.locator('#chart-time').textContent(), '21:00〜21:15');
+  assert.equal(await touch.locator('#chart-value').textContent(), '入場 5人');
+  assert.equal(await touch.locator('#chart').evaluate(el => getComputedStyle(el).touchAction), 'auto');
   await touchContext.close();
   console.log('PASS contact-time save, exactly once after release/touch/keyboard, upward number motion, reduced-motion suppression');
   const shiftImage = await readFile('assets/cutouts/ART-01_yaezakura.png');
