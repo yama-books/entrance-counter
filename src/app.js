@@ -5,6 +5,7 @@ import { themes, themeKey, savedTheme, applyTheme } from './themes.js';
 const $ = selector => document.querySelector(selector);
 let db, events = [], chartKind = 'entry', historyLimit = 100, queue = Promise.resolve(), pending = 0;
 let selectedDay = dayOf(new Date()), today = selectedDay;
+let chartMinute = null, chartDay = today, chartBins = [];
 const status = (text, error = false) => { $('#status').textContent = text; $('#status').classList.toggle('error', error); };
 const node = (tag, text, className) => { const el = document.createElement(tag); el.textContent = text; if (className) el.className = className; return el; };
 const stamp = at => `${dayOf(at)} ${timeOf(at)}`;
@@ -38,14 +39,23 @@ function render() {
     $(`[data-undo="${kind}"]`).disabled = !active(events).some(e => e.kind === kind && dayOf(e.at) === today);
   }
   const max = Math.max(4, Math.ceil(Math.max(0, ...data.bins.map(b => b[chartKind])) / 4) * 4);
-  $('#chart-description').textContent = `${labels[chartKind]} / ${interval}分`;
+  $('#chart-description').textContent = `${interval === 60 ? '1時間' : `${interval}分`}ごとの${chartKind === 'entry' ? '人数' : '件数'}`;
   $('#chart-axis').replaceChildren(...[4, 3, 2, 1, 0].map(step => node('span', max * step / 4)));
   $('#chart').classList.toggle('fine-interval', interval <= 15);
   $('#chart').dataset.series = chartKind;
+  $('#chart').style.setProperty('--bins', data.bins.length);
   $('#chart').replaceChildren(...data.bins.map(b => {
     const el = node('div', '', 'bar'); el.style.height = `${b[chartKind] / max * 100}%`; el.title = `${b.time} ${labels[chartKind]} ${b[chartKind]}`; return el;
   }));
-  $('#chart').setAttribute('aria-label', `${today} ${labels[chartKind]}、${interval}分ごと。` + data.bins.filter(b => b[chartKind]).map(b => `${b.time} ${b[chartKind]}`).join('、'));
+  chartBins = data.bins;
+  if (chartDay !== today) { chartMinute = null; chartDay = today; }
+  if (chartMinute === null) {
+    const latest = data.bins.findLastIndex(b => b[chartKind] > 0);
+    const clock = timeOf(new Date()).split(':').map(Number);
+    chartMinute = latest >= 0 ? latest * interval : clock[0] * 60 + clock[1];
+  }
+  $('#chart').setAttribute('aria-label', `${today} ${labels[chartKind]}、${interval}分ごとの時間帯を選択`);
+  showChartSelection();
   renderHistory($('#recent'), events.filter(e => dayOf(e.at) === today).slice(-5).reverse(), false);
   if ($('#history-dialog').open) renderHistory($('#all-history'), events.slice(-historyLimit).reverse(), true);
   $('#more-history').hidden = events.length <= historyLimit;
@@ -63,6 +73,21 @@ function render() {
   if ($('#memo-dialog').open) details('#memos', 'memo', e => e.text);
   if ($('#staff-dialog').open) details('#staff-history', 'staff', e => e.staff);
   if ($('#summary-dialog').open) renderSummary();
+}
+function showChartSelection() {
+  if (!chartBins.length) return;
+  const interval = Number($('#interval').value), index = Math.min(chartBins.length - 1, Math.floor(chartMinute / interval));
+  const bin = chartBins[index], end = (index + 1) * interval;
+  const endTime = `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
+  const range = `${bin.time}〜${endTime}`, value = `${labels[chartKind]} ${bin[chartKind]}${chartKind === 'entry' ? '人' : '冊'}`;
+  $('#chart-time').textContent = range;
+  $('#chart-value').textContent = value;
+  const chart = $('#chart');
+  chart.querySelectorAll('.bar').forEach((bar, i) => bar.classList.toggle('selected', i === index));
+  chart.style.setProperty('--selection', `${(index + .5) / chartBins.length * 100}%`);
+  chart.setAttribute('aria-valuemax', chartBins.length - 1);
+  chart.setAttribute('aria-valuenow', index);
+  chart.setAttribute('aria-valuetext', `${range} ${value}`);
 }
 function table(target, headers, rows) {
   const el = document.createElement('table'), head = document.createElement('tr');
@@ -139,6 +164,28 @@ document.querySelectorAll('[data-chart]').forEach(button => button.addEventListe
   document.querySelectorAll('[data-chart]').forEach(b => { b.classList.toggle('selected', b === button); b.setAttribute('aria-pressed', String(b === button)); }); render();
 }));
 $('#interval').addEventListener('change', render);
+const chart = $('#chart');
+function selectChartAt(clientX) {
+  if (!chartBins.length) return;
+  const box = chart.getBoundingClientRect();
+  const index = Math.max(0, Math.min(chartBins.length - 1, Math.floor((clientX - box.left - chart.clientLeft) / chart.clientWidth * chartBins.length)));
+  chartMinute = index * Number($('#interval').value);
+  showChartSelection();
+}
+let chartPointer = null;
+chart.addEventListener('pointerdown', event => {
+  if (event.button !== 0 || !event.isPrimary) return;
+  chartPointer = event.pointerId; chart.setPointerCapture(event.pointerId);
+  selectChartAt(event.clientX);
+});
+chart.addEventListener('pointermove', event => { if (event.pointerId === chartPointer) selectChartAt(event.clientX); });
+for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) chart.addEventListener(type, () => { chartPointer = null; });
+chart.addEventListener('keydown', event => {
+  const index = Number(chart.getAttribute('aria-valuenow'));
+  const next = { ArrowLeft: index - 1, ArrowDown: index - 1, ArrowRight: index + 1, ArrowUp: index + 1, Home: 0, End: chartBins.length - 1 }[event.key];
+  if (next === undefined || !chartBins.length) return;
+  event.preventDefault(); chartMinute = Math.max(0, Math.min(chartBins.length - 1, next)) * Number($('#interval').value); showChartSelection();
+});
 $('#summary-day').value = selectedDay;
 $('#summary-day').addEventListener('change', () => { if ($('#summary-day').value) selectedDay = $('#summary-day').value; renderSummary(); });
 $('#more-history').addEventListener('click', () => { historyLimit += 100; render(); });
