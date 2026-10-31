@@ -1,5 +1,7 @@
 import { labels, dayOf, timeOf, active, currentStaff, summary, csv, validate } from './model.js';
-import { openStore, read, write, readShift, writeShift } from './storage.js';
+import { openStore, read, write, readShift, writeShift, readPredictions, savePrediction, readDayResults, saveDayResult, readBackup } from './storage.js';
+import { visitorForecast, validatePredictions, previousPredictions } from './forecast.js';
+import { eventDays, eventTotals, closedDay, dayRecordIds, validateDayResults } from './event-days.js';
 import { scheduleFor } from './schedule.js';
 import { themes, themeKey, savedTheme, applyTheme } from './themes.js';
 const $ = selector => document.querySelector(selector);
@@ -7,6 +9,9 @@ let db, events = [], chartKind = 'entry', historyLimit = 100, queue = Promise.re
 let selectedDay = dayOf(new Date()), today = selectedDay;
 let chartMinute = null, chartDay = today, chartBins = [];
 let chartStart = 0, chartEnd = 1440;
+let predictions = [], savedPredictionId = null, pendingPrediction = null, predictionBusy = false, forecastGeneration = 0;
+let dayResults = [], resultBusy = false;
+const staffDefault = () => currentStaff(events) === '未設定' ? '' : currentStaff(events);
 const status = (text, error = false) => { $('#status').textContent = text; $('#status').classList.toggle('error', error); };
 const node = (tag, text, className) => { const el = document.createElement(tag); el.textContent = text; if (className) el.className = className; return el; };
 const stamp = at => `${dayOf(at)} ${timeOf(at)}`;
@@ -35,9 +40,13 @@ function render() {
   $('#date').textContent = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'full' }).format(new Date());
   $('#staff-name').textContent = currentStaff(events);
   const interval = Number($('#interval').value), data = summary(events, today, interval);
+  const locked = Boolean(closedDay(dayResults, today)), combined = eventTotals(events);
   for (const kind of ['entry', 'akarenga']) {
     updateNumber(kind, data.totals[kind]);
-    $(`[data-undo="${kind}"]`).disabled = !active(events).some(e => e.kind === kind && dayOf(e.at) === today);
+    $(`[data-kind="${kind}"]`).disabled = locked || !db;
+    $(`[data-undo="${kind}"]`).disabled = locked || !active(events).some(e => e.kind === kind && dayOf(e.at) === today);
+    $(`#${kind}-event-total`).hidden = today < eventDays[1];
+    $(`#${kind}-event-total`).textContent = `2日間累計 ${combined[kind].toLocaleString('ja-JP')}${kind === 'entry' ? '人' : '冊'}`;
   }
   const daytime = $('#chart-range').value === 'daytime';
   chartStart = daytime ? 540 : 0; chartEnd = daytime ? 990 : 1440;
@@ -46,32 +55,43 @@ function render() {
     const [hour, minute] = timeOf(e.at).split(':').map(Number);
     return hour * 60 + minute >= chartStart && hour * 60 + minute < chartEnd;
   }) : events;
-  chartBins = summary(viewEvents, today, interval).bins.map((bin, i) => ({ ...bin, start: i * interval, end: Math.min((i + 1) * interval, chartEnd) })).filter(bin => bin.start >= chartStart && bin.start < chartEnd);
-  const max = Math.max(4, Math.ceil(Math.max(0, ...chartBins.map(b => b[chartKind])) * 1.2 / 4) * 4);
-  $('#chart-description').textContent = `${interval === 60 ? '1時間' : `${interval}分`}ごとの${chartKind === 'entry' ? '人数' : '件数'}`;
+  const paired = chartKind === 'combined', baseBins = summary(viewEvents, today, interval).bins;
+  if (paired) {
+    const days = eventDays.map(date => summary(viewEvents, date, interval).bins);
+    baseBins.forEach((bin, i) => { bin.entry = days[0][i].entry + days[1][i].entry; bin.akarenga = days[0][i].akarenga + days[1][i].akarenga; });
+  }
+  chartBins = baseBins.map((bin, i) => ({ ...bin, start: i * interval, end: Math.min((i + 1) * interval, chartEnd) })).filter(bin => bin.start >= chartStart && bin.start < chartEnd);
+  const values = chartBins.flatMap(b => paired ? [b.entry, b.akarenga] : [b[chartKind]]);
+  const max = Math.max(4, Math.ceil(Math.max(0, ...values) * 1.35 / 4) * 4);
+  $('#chart-description').textContent = `${paired ? '2日間通算・' : ''}${interval === 60 ? '1時間' : `${interval}分`}ごとの${paired ? '入場・赤煉瓦' : chartKind === 'entry' ? '人数' : '件数'}`;
+  $('#chart-help').textContent = paired ? '2日間通算：若草＝入場／煉瓦色＝赤煉瓦・横スクロール可' : '棒をタップして詳細を確認・横スクロール可';
   $('#chart-axis').replaceChildren(...[4, 3, 2, 1, 0].map(step => node('span', max * step / 4)));
   $('#chart').classList.toggle('fine-interval', interval <= 15);
   $('#chart').dataset.series = chartKind;
   $('#chart').style.gridTemplateColumns = chartBins.map(bin => `${bin.end - bin.start}fr`).join(' ');
   $('#chart').classList.toggle('show-values', interval >= 15);
-  const labelWidth = Math.max(12, String(Math.max(...chartBins.map(b => b[chartKind]))).length * 6 + 2);
-  $('.chart-surface').style.minWidth = interval >= 15 ? `${28 + (chartEnd - chartStart) / Math.min(...chartBins.map(b => b.end - b.start)) * labelWidth}px` : '0';
+  const labelWidth = Math.max(12, String(Math.max(...values)).length * 6 + 2);
+  $('.chart-surface').style.minWidth = interval >= 15 ? `${28 + (chartEnd - chartStart) / Math.min(...chartBins.map(b => b.end - b.start)) * labelWidth * (paired ? 2 : 1)}px` : '0';
   $('#chart').style.touchAction = interval >= 15 ? 'auto' : 'pan-y';
   $('#chart').replaceChildren(...chartBins.map(b => {
-    const el = node('div', '', 'bar'); el.style.height = `${b[chartKind] / max * 100}%`; el.title = `${b.time} ${labels[chartKind]} ${b[chartKind]}`;
-    if (interval >= 15 && b[chartKind] > 0) el.append(node('span', b[chartKind], 'bar-value'));
-    return el;
+    const bar = kind => {
+      const el = node('div', '', 'bar'); el.dataset.category = kind; el.style.height = `${b[kind] / max * 100}%`; el.title = `${b.time} ${labels[kind]} ${b[kind]}`;
+      if (interval >= 15 && b[kind] > 0) el.append(node('span', b[kind], 'bar-value'));
+      return el;
+    };
+    if (!paired) return bar(chartKind);
+    const group = node('div', '', 'bar-group'); group.append(bar('entry'), bar('akarenga')); return group;
   }));
   $('.chart-labels').replaceChildren(...(daytime ? [[540, '9:00'], [660, '11:00'], [780, '13:00'], [900, '15:00'], [990, '16:30']] : [[0, '0時'], [360, '6時'], [720, '12時'], [1080, '18時'], [1440, '24時']]).map(([minute, text]) => {
     const tick = node('span', text); tick.style.left = `${(minute - chartStart) / (chartEnd - chartStart) * 100}%`; return tick;
   }));
   if (chartDay !== today) { chartMinute = null; chartDay = today; }
   if (chartMinute === null || chartMinute < chartStart || chartMinute >= chartEnd) {
-    const latest = chartBins.findLast(b => b[chartKind] > 0);
+    const latest = chartBins.findLast(b => paired ? b.entry > 0 || b.akarenga > 0 : b[chartKind] > 0);
     const clock = timeOf(new Date()).split(':').map(Number);
     chartMinute = latest ? latest.start : Math.max(chartStart, Math.min(chartEnd - 1, clock[0] * 60 + clock[1]));
   }
-  $('#chart').setAttribute('aria-label', `${today} ${labels[chartKind]}、${interval}分ごとの時間帯を選択`);
+  $('#chart').setAttribute('aria-label', `${paired ? '10/31・11/1の2日間通算 入場・赤煉瓦' : `${today} ${labels[chartKind]}`}、${interval}分ごとの時間帯を選択`);
   showChartSelection();
   renderHistory($('#recent'), events.filter(e => dayOf(e.at) === today).slice(-5).reverse(), false);
   if ($('#history-dialog').open) renderHistory($('#all-history'), events.slice(-historyLimit).reverse(), true);
@@ -90,17 +110,114 @@ function render() {
   if ($('#memo-dialog').open) details('#memos', 'memo', e => e.text);
   if ($('#staff-dialog').open) details('#staff-history', 'staff', e => e.staff);
   if ($('#summary-dialog').open) renderSummary();
+  if ($('#forecast-dialog').open) renderForecast();
+  $('#previous-day-button').disabled = today < eventDays[1];
+  if ($('#day-results-dialog').open) renderDayResults();
+  if ($('#previous-day-dialog').open) renderPreviousDay();
 }
+function renderDayResults() {
+  const total = eventTotals(events);
+  for (const [index, date] of eventDays.entries()) {
+    const closed = closedDay(dayResults, date), button = $(`[data-finalize="${date}"]`), counts = summary(events, date).totals;
+    button.textContent = `${index + 1}日目${closed ? '確定解除' : '終了'}`;
+    button.disabled = resultBusy || date > today;
+    $(`#day-result-${index + 1}`).textContent = `${date}　入場 ${counts.entry.toLocaleString('ja-JP')}人／赤煉瓦 ${counts.akarenga.toLocaleString('ja-JP')}冊　${closed ? `確定済み（${stamp(closed.at)}）` : '未確定'}`;
+  }
+  $('#event-final-summary').hidden = !closedDay(dayResults, eventDays[1]);
+  $('#event-final-summary').textContent = `2日間の結果：入場 ${total.entry.toLocaleString('ja-JP')}人／赤煉瓦 ${total.akarenga.toLocaleString('ja-JP')}冊${closedDay(dayResults, eventDays[0]) ? '' : '（1日目は未確定）'}`;
+  table('#day-result-history', ['日付', '操作', '担当者', '記録時刻'], dayResults.slice().reverse().map(r => [r.date, r.kind === 'close' ? '確定' : '確定解除', r.staff, stamp(r.at)]));
+  $('#day-results-dialog [data-close]').disabled = resultBusy;
+}
+function renderPreviousDay() {
+  const counts = summary(events, eventDays[0]).totals;
+  $('#previous-day-summary').textContent = `${eventDays[0]}　入場 ${counts.entry.toLocaleString('ja-JP')}人／赤煉瓦 ${counts.akarenga.toLocaleString('ja-JP')}冊`;
+  renderHistory($('#previous-day-records'), events.filter(e => dayOf(e.at) === eventDays[0]).slice().reverse(), false);
+}
+document.querySelectorAll('[data-finalize]').forEach(button => button.addEventListener('click', async () => {
+  if (resultBusy) return;
+  resultBusy = true; $('#day-results-status').textContent = '記録を確認しています…'; renderDayResults();
+  try {
+    await queue; events = await read(db); dayResults = await readDayResults(db);
+    const date = button.dataset.finalize, closed = closedDay(dayResults, date), counts = summary(events, date).totals;
+    const expectedIds = dayRecordIds(events, date);
+    const text = closed ? `${date}の確定を解除しますか？ 件数の追加・取消を再開できます。` : `${date}を終了して確定しますか？ 入場 ${counts.entry}人／赤煉瓦 ${counts.akarenga}冊。確定後は追加・取消を停止します。あとで解除できます。`;
+    if (await confirmAction(text)) {
+      $('#day-results-status').textContent = '保存しています…';
+      dayResults = await saveDayResult(db, { id: crypto.randomUUID(), date, kind: closed ? 'reopen' : 'close', expectedIds });
+      channel?.postMessage('day-results-updated');
+      $('#day-results-status').textContent = closed ? '確定を解除しました。' : '結果を確定しました。';
+    } else $('#day-results-status').textContent = '変更していません。';
+  } catch (e) { $('#day-results-status').textContent = `保存失敗：${e.message}`; }
+  finally { resultBusy = false; render(); }
+}));
+$('#day-results-dialog').addEventListener('cancel', event => { if (resultBusy) event.preventDefault(); });
+function renderForecast() {
+  const forecast = visitorForecast(events, new Date(), dayResults);
+  if (!eventDays.includes(forecast.date)) $('#prediction-open').disabled = true;
+  $('#forecast-estimate').textContent = forecast.estimate === null ? '—' : `${forecast.estimate.toLocaleString('ja-JP')}人`;
+  $('#forecast-actual').textContent = `本日の記録済み人数：${forecast.actual.toLocaleString('ja-JP')}人`;
+  $('#forecast-combined').textContent = forecast.combined === null ? '—' : `${forecast.combined.toLocaleString('ja-JP')}人`;
+  $('#forecast-status').textContent = ({ outside: '開催日10/31・11/1の記録から計算します。', 'before-opening': '9:00の開始後に計算します。', starting: '開始から1分後に計算します。', 'no-records': '入場記録ができると見込みを表示します。', running: '現在のペースからの目安です。客足の変化は考慮していません。', ended: '終了後・確定後は、現在の記録済み人数を表示しています。' })[forecast.status] + (forecast.date === eventDays[1] && !forecast.previousKnown ? ' 1日目の入場記録または確定がないため、合計見込みは未算出です。' : '');
+  const own = predictions.find(p => p.id === savedPredictionId);
+  $('#prediction-history').hidden = !own;
+  if (!own) { $('#prediction-list').replaceChildren(); return; }
+  const previous = previousPredictions(predictions, own.id);
+  if (previous.length) table('#prediction-list', ['対象日', '担当者', '予測人数', '入力時刻'], previous.map(p => [p.date, p.staff, `${p.count.toLocaleString('ja-JP')}人`, stamp(p.at)]));
+  else $('#prediction-list').replaceChildren(node('p', 'まだ前の人の予測はありません。'));
+}
+$('#forecast-top').addEventListener('click', async () => {
+  const generation = ++forecastGeneration;
+  savedPredictionId = null; pendingPrediction = null;
+  $('#prediction-form').hidden = true; $('#prediction-open').hidden = false; $('#prediction-open').disabled = true;
+  $('#prediction-staff').value = staffDefault(); $('#prediction-count').value = ''; $('#prediction-status').textContent = '';
+  $('#prediction-history').hidden = true; $('#prediction-list').replaceChildren();
+  $('#forecast-dialog').showModal(); renderForecast();
+  try {
+    const stored = await readPredictions(db);
+    if (generation !== forecastGeneration || !$('#forecast-dialog').open) return;
+    predictions = stored; $('#prediction-open').disabled = !eventDays.includes(dayOf(new Date())); renderForecast();
+  } catch (e) { $('#prediction-status').textContent = `読込失敗：${e.message}。画面を開き直してください。`; }
+});
+$('#prediction-open').addEventListener('click', () => {
+  pendingPrediction = { id: crypto.randomUUID(), date: dayOf(new Date()) };
+  $('#prediction-staff').value = staffDefault();
+  $('#prediction-form').hidden = false; $('#prediction-open').hidden = true;
+  ($('#prediction-staff').value ? $('#prediction-count') : $('#prediction-staff')).focus();
+});
+$('#prediction-form').addEventListener('submit', async event => {
+  event.preventDefault(); if (predictionBusy || !pendingPrediction) return;
+  const count = $('#prediction-count').value.trim(), staff = $('#prediction-staff').value.trim();
+  if (!/^\d{1,8}$/.test(count)) { $('#prediction-status').textContent = '予測人数は0〜99,999,999の整数で入力してください。'; return; }
+  pendingPrediction.at ||= new Date().toISOString();
+  const prediction = { ...pendingPrediction, staff, count: Number(count) }, generation = forecastGeneration;
+  try { validatePredictions([prediction]); } catch (e) { $('#prediction-status').textContent = e.message; return; }
+  predictionBusy = true; $('#prediction-status').textContent = '予測を保存しています…';
+  const controls = [...$('#prediction-form').elements, $('#forecast-dialog [data-close]')]; controls.forEach(el => el.disabled = true);
+  try {
+    predictions = await savePrediction(db, prediction);
+    channel?.postMessage('prediction-updated');
+    if (generation !== forecastGeneration || !$('#forecast-dialog').open) return;
+    savedPredictionId = prediction.id; pendingPrediction = null; $('#prediction-form').hidden = true;
+    $('#prediction-status').textContent = `${prediction.staff}さんの予測 ${prediction.count.toLocaleString('ja-JP')}人を保存しました（${stamp(prediction.at)}）。`;
+    renderForecast();
+  } catch (e) { $('#prediction-status').textContent = `保存失敗：${e.message}。入力は残っています。`; }
+  finally { predictionBusy = false; controls.forEach(el => el.disabled = false); }
+});
+$('#forecast-dialog').addEventListener('cancel', event => { if (predictionBusy) event.preventDefault(); });
+$('#forecast-dialog').addEventListener('close', () => {
+  forecastGeneration++; savedPredictionId = null; pendingPrediction = null;
+  $('#prediction-history').hidden = true; $('#prediction-list').replaceChildren();
+});
 function showChartSelection() {
   if (!chartBins.length) return;
   const index = chartBins.findIndex(bin => chartMinute >= bin.start && chartMinute < bin.end);
   const bin = chartBins[index], end = bin.end;
   const endTime = `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
-  const range = `${bin.time}〜${endTime}`, value = `${labels[chartKind]} ${bin[chartKind]}${chartKind === 'entry' ? '人' : '冊'}`;
+  const range = `${bin.time}〜${endTime}`, value = chartKind === 'combined' ? `入場 ${bin.entry}人／赤煉瓦 ${bin.akarenga}冊` : `${labels[chartKind]} ${bin[chartKind]}${chartKind === 'entry' ? '人' : '冊'}`;
   $('#chart-time').textContent = range;
   $('#chart-value').textContent = value;
   const chart = $('#chart');
-  chart.querySelectorAll('.bar').forEach((bar, i) => bar.classList.toggle('selected', i === index));
+  [...chart.children].forEach((bar, i) => bar.classList.toggle('selected', i === index));
   chart.style.setProperty('--selection', `${((bin.start + bin.end) / 2 - chartStart) / (chartEnd - chartStart) * 100}%`);
   chart.setAttribute('aria-valuemax', chartBins.length - 1);
   chart.setAttribute('aria-valuenow', index);
@@ -124,7 +241,7 @@ function renderHistory(target, list, actions) {
     const clock = node('span', timeOf(e.at).slice(0, 5)); clock.title = stamp(e.at);
     row.append(clock, node('span', labels[e.kind], 'badge ' + e.kind), node('span', ['entry', 'akarenga'].includes(e.kind) ? '+1' : e.kind === 'cancel' ? '−1' : '—'), node('span', e.staff));
     if (e.kind === 'memo') row.append(node('p', e.text, 'memo-content'));
-    if (actions && ['entry', 'akarenga'].includes(e.kind) && !cancelled.has(e.id)) { const button = node('button', '取消'); button.addEventListener('click', () => cancelEvent(e)); row.append(button); }
+    if (actions && ['entry', 'akarenga'].includes(e.kind) && !cancelled.has(e.id)) { const button = node('button', '取消'); button.disabled = Boolean(closedDay(dayResults, dayOf(e.at))); button.addEventListener('click', () => cancelEvent(e)); row.append(button); }
     return row;
   }) : [node('p', 'まだ記録がありません。', 'empty')]));
 }
@@ -170,7 +287,7 @@ document.querySelectorAll('[data-undo]').forEach(button => button.addEventListen
 }));
 document.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => {
   const dialog = document.getElementById(button.dataset.open); dialog.showModal(); render();
-  if (dialog.id === 'call-dialog') showCallSchedule();
+  if (dialog.id === 'call-dialog') { $('#call-staff').value = staffDefault(); showCallSchedule(); }
   if (dialog.id === 'settings-dialog') showCallSettings();
   if (dialog.id === 'theme-dialog') showThemes();
   if (dialog.id === 'shift-dialog') showShift().catch(e => { $('#shift-status').textContent = `読込失敗：${e.message}`; });
@@ -185,11 +302,11 @@ $('#chart-range').addEventListener('change', () => { render(); $('.chart-scroll'
 const chart = $('#chart');
 function selectChartAt(clientX, clientY) {
   if (!chartBins.length) return;
-  const index = [...chart.querySelectorAll('.bar')].findIndex((bar, i) => {
-    if (!chartBins[i][chartKind]) return false;
+  const index = [...chart.children].findIndex((slot, i) => (slot.classList.contains('bar') ? [slot] : [...slot.children]).some(bar => {
+    if (!chartBins[i][bar.dataset.category]) return false;
     const box = bar.getBoundingClientRect(), label = bar.querySelector('.bar-value');
     return clientX >= box.left && clientX <= box.right && clientY >= (label ? label.getBoundingClientRect().top : box.top) && clientY <= box.bottom;
-  });
+  }));
   if (index < 0) return;
   chartMinute = chartBins[index].start;
   showChartSelection();
@@ -332,9 +449,10 @@ function download(text, extension, suffix) {
   const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = `entrance-counter-${today}-${suffix}.${extension}`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 async function freshExport(fn) {
-  try { await queue; events = await read(db); fn(); } catch (e) { status(`書出し失敗：${e.message}`, true); }
+  try { await queue; events = await read(db); await fn(); } catch (e) { status(`書出し失敗：${e.message}`, true); }
 }
-$('#export-json').addEventListener('click', () => freshExport(() => download(JSON.stringify({ app: 'entrance-counter', version: 1, events }, null, 2), 'json', 'backup')));
+$('#export-json').addEventListener('click', () => freshExport(async () => download(JSON.stringify({ app: 'entrance-counter', version: 1, ...await readBackup(db) }, null, 2), 'json', 'backup')));
+$('#export-predictions').addEventListener('click', () => freshExport(async () => download(csv([['対象日', '担当者', '予測人数', '入力日時(JST)'], ...(await readPredictions(db)).map(p => [p.date, p.staff, p.count, stamp(p.at)])]), 'csv', 'predictions')));
 $('#export-csv').addEventListener('click', () => freshExport(() => download(csv([['ID', '日時(JST)', '種別', '増減', '担当', '取消対象ID', 'メモ'], ...events.map(e => [e.id, stamp(e.at), labels[e.kind], ['entry', 'akarenga'].includes(e.kind) ? 1 : e.kind === 'cancel' ? -1 : '', e.staff, e.target, e.text])]), 'csv', 'events')));
 $('#export-summary').addEventListener('click', () => freshExport(() => download(csv([['日付(JST)', '時刻', '入場', '赤煉瓦'], ...summary(events, selectedDay, Number($('#interval').value)).bins.map(b => [selectedDay, b.time, b.entry, b.akarenga])]), 'csv', 'summary')));
 $('#restore').addEventListener('change', async event => {
@@ -344,11 +462,13 @@ $('#restore').addEventListener('change', async event => {
     const backup = JSON.parse(await file.text());
     if (backup.app !== 'entrance-counter' || backup.version !== 1) throw Error('対応するバックアップではありません');
     validate(backup.events);
-    if (await confirmAction(`${backup.events.length}件のバックアップを追加復元しますか？ 同一IDの記録は重複しません。`)) await enqueue({ type: 'restore', events: backup.events }, '復元を保存しました');
+    const restoredPredictions = validatePredictions(backup.predictions === undefined ? [] : backup.predictions);
+    const restoredResults = validateDayResults(backup.dayResults === undefined ? [] : backup.dayResults);
+    if (await confirmAction(`受付記録${backup.events.length}件・予測${restoredPredictions.length}件・終了記録${restoredResults.length}件を追加復元しますか？ 同一IDの記録は重複しません。`)) { await enqueue({ type: 'restore', events: backup.events, predictions: restoredPredictions, dayResults: restoredResults }, '復元を保存しました'); dayResults = await readDayResults(db); render(); }
   } catch (e) { status(`復元失敗：${e.message}`, true); }
   event.target.value = '';
 });
-async function refresh() { if (!db || pending) return; try { events = await read(db); render(); } catch (e) { status(`読込失敗：${e.message}`, true); } }
+async function refresh() { if (!db || pending) return; try { events = await read(db); dayResults = await readDayResults(db); if ($('#forecast-dialog').open) predictions = await readPredictions(db); render(); } catch (e) { status(`読込失敗：${e.message}`, true); } }
 if (channel) channel.onmessage = event => {
   if (event.data === 'shift-updated') { if ($('#shift-dialog').open) showShift().catch(e => { $('#shift-status').textContent = `読込失敗：${e.message}`; }); }
   else refresh();
@@ -357,7 +477,7 @@ window.addEventListener('focus', refresh);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 setInterval(() => { if (dayOf(new Date()) !== today) { selectedDay = dayOf(new Date()); $('#summary-day').value = selectedDay; } render(); }, 30000);
 try {
-  db = await openStore(); events = await read(db); render();
-  document.querySelectorAll('[data-kind]').forEach(button => button.disabled = false);
+  db = await openStore(); events = await read(db); dayResults = await readDayResults(db); render();
+  $('#forecast-top').disabled = false;
   status('端末内に保存します');
 } catch (e) { status(`保存領域を開けません：${e.message}。再読込してください。`, true); }

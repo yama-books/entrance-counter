@@ -62,6 +62,19 @@ button { border: 1px solid var(--frame); background: var(--panel); min-height: 4
 .heading p { font-size: 15px; margin: 0; white-space: nowrap; }
 #staff-top, #call-top { font-size: 14px; padding: 8px 12px; border: 1px solid var(--frame); background: var(--panel); color: var(--ink); border-radius: 2px; }
 #staff-name { display: inline-block; max-width: 9em; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+#forecast-top { font-size: 14px; padding: 8px 12px; white-space: nowrap; flex-shrink: 0; }
+.forecast-estimate { font-family: "Reception Digits", monospace; font-size: 42px; overflow-wrap: anywhere; }
+#prediction-list { overflow-x: auto; }
+#prediction-list table { table-layout: fixed; }
+#prediction-list th, #prediction-list td { overflow-wrap: anywhere; font-size: 13px; padding: 8px 5px; }
+#prediction-status { overflow-wrap: anywhere; }
+.event-total { order: 2; font-size: 13px; color: var(--muted); margin: -4px 0 10px; }
+.event-total[hidden] { display: none; }
+.event-final-summary { font-weight: 700; border-top: 1px solid var(--frame); padding-top: 12px; }
+.result-history { overflow-x: auto; }
+.result-history table { table-layout: fixed; }
+.result-history th, .result-history td { overflow-wrap: anywhere; font-size: 12px; }
+#day-results-dialog p, #previous-day-dialog p { overflow-wrap: anywhere; }
 main { flex: 1; min-height: 500px; grid-template-columns: 1.5fr 1fr; gap: 24px; }
 .left { gap: 18px; }
 .counters { background: transparent; border: 0; padding: 0; gap: 18px; grid-template-columns: 1fr 1fr; }
@@ -113,7 +126,7 @@ main { flex: 1; min-height: 500px; grid-template-columns: 1.5fr 1fr; gap: 24px; 
 .segmented button + button { border-left: 0; }
 .segmented .selected { background: var(--accent); color: var(--accent-ink); }
 .chart-options { font-size: 12px; margin: 12px 0; align-items: center; }
-.chart-readout { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 6px 0; font-size: 16px; font-variant-numeric: tabular-nums; }
+.chart-readout { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; padding: 6px 0; font-size: 16px; font-variant-numeric: tabular-nums; }
 .chart-readout strong { font-size: 19px; }
 .chart-help { color: var(--muted); font-size: 11px; margin: 0 0 8px; }
 .chart-scroll { display: flex; flex: 1; min-height: 104px; overflow-x: auto; overflow-y: hidden; }
@@ -133,6 +146,13 @@ select { min-height: 36px; border: 1px solid var(--frame); }
 .chart[data-series="akarenga"] .bar { background: var(--b); }
 .chart .bar.selected { background: color-mix(in srgb, var(--a) 65%, var(--ink)); }
 .chart[data-series="akarenga"] .bar.selected { background: color-mix(in srgb, var(--b) 65%, var(--ink)); }
+.bar-group { height: 100%; display: grid; grid-template-columns: 1fr 1fr; align-items: end; gap: 2px; margin-inline: 2px; }
+.chart.show-values .bar-group .bar { margin-inline: 0; }
+.chart[data-series="combined"] .bar[data-category="akarenga"] { background: var(--b); }
+.chart .bar-group.selected .bar[data-category="entry"] { background: color-mix(in srgb, var(--a) 65%, var(--ink)); }
+.chart .bar-group.selected .bar[data-category="akarenga"] { background: color-mix(in srgb, var(--b) 65%, var(--ink)); }
+.chart.fine-interval:not(.show-values) .bar-group { gap: 0; margin: 0; }
+.chart-panel .segmented button { padding-inline: 8px; }
 .chart-labels { margin-left: 28px; font-size: 11px; position: relative; height: 14px; flex-shrink: 0; display: block; }
 .chart-labels span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
 .chart-labels span:first-child { transform: none; }
@@ -172,6 +192,7 @@ input, textarea { border: 1px solid var(--frame); }
   .sakura { width: 42px; height: 42px; }
   .cat { width: 72px; height: 45px; }
   #staff-top, #call-top { padding: 6px 9px; font-size: 13px; }
+  #forecast-top { padding: 6px 9px; font-size: 13px; }
   main { gap: 18px; }
   .counters { gap: 14px; }
   .counter, .counter.akarenga { padding: 18px 14px 12px; }
