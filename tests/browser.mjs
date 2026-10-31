@@ -57,6 +57,39 @@ try {
   }
   await page.locator('#interval').selectOption('5');
   console.log('PASS highlighted handoff body in recent/full history and pinned latest; all four aggregation intervals');
+  // Fixed readout: select even empty bins, preserve time on interval/category switches.
+  const chartBefore = await page.locator('#entry-total').textContent();
+  await page.locator('#interval').selectOption('15');
+  assert.ok((await page.locator('#chart-description').textContent()).includes('15分ごと'));
+  await page.locator('#chart').focus();
+  await page.keyboard.press('Home');
+  assert.equal(await page.locator('#chart-time').textContent(), '00:00〜00:15');
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await page.locator('#chart-time').textContent(), '00:15〜00:30');
+  await page.locator('#interval').selectOption('30');
+  assert.equal(await page.locator('#chart-time').textContent(), '00:00〜00:30');
+  await page.locator('#interval').selectOption('15');
+  assert.equal(await page.locator('#chart-time').textContent(), '00:15〜00:30');
+  await page.locator('[data-chart="akarenga"]').click();
+  assert.ok((await page.locator('#chart-value').textContent()).startsWith('赤煉瓦 '));
+  const plot = await page.locator('#chart').boundingBox();
+  await page.mouse.move(plot.x + 2, plot.y + 10); await page.mouse.down();
+  await page.mouse.move(plot.x + plot.width - 2, plot.y + 10, { steps: 8 }); await page.mouse.up();
+  assert.equal(await page.locator('#chart-time').textContent(), '23:45〜24:00');
+  assert.equal(await page.locator('.bar.selected').count(), 1);
+  assert.ok((await page.locator('#chart').getAttribute('aria-valuetext')).includes('23:45〜24:00 赤煉瓦'));
+  await page.locator('#chart').focus(); await page.keyboard.press('ArrowRight');
+  assert.equal(await page.locator('#chart-time').textContent(), '23:45〜24:00');
+  await page.locator('[data-chart="entry"]').click();
+  assert.equal(await page.locator('#entry-total').textContent(), chartBefore);
+  const bins = await page.locator('.bar').count();
+  const highest = await page.locator('.bar').evaluateAll(bars => bars.reduce((best, bar, i) => parseFloat(bar.style.height) > parseFloat(bars[best].style.height) ? i : best, 0));
+  await page.locator('#chart').focus(); await page.keyboard.press('Home');
+  for (let i = 0; i < highest; i++) await page.keyboard.press('ArrowRight');
+  const chosen = await page.locator('.bar.selected').getAttribute('title');
+  assert.ok(chosen.includes((await page.locator('#chart-value').textContent()).replace(/人$/, '')));
+  assert.equal(bins, 96);
+  console.log('PASS chart fixed range/value readout, interval time preservation, category switch, drag/end bounds, keyboard and no counting side effects');
   await page.locator('[data-open="data-dialog"]').click();
   const downloaded = page.waitForEvent('download'); await page.locator('#export-json').click(); const download = await downloaded;
   const backup = JSON.parse(await readFile(await download.path(), 'utf8'));
@@ -130,6 +163,11 @@ try {
   await touch.locator('[data-kind="entry"]').tap(); await touch.waitForFunction(() => document.querySelector('#entry-total').textContent === '5');
   assert.equal(await touch.evaluate(() => window.numberMotions.length), motions);
   await touch.reload(); await touch.waitForFunction(() => document.querySelector('#entry-total').textContent === '5');
+  await touch.locator('#interval').selectOption('15');
+  await touch.locator('#chart').tap({ position: { x: 2, y: 10 } });
+  assert.equal(await touch.locator('#chart-time').textContent(), '00:00〜00:15');
+  assert.equal(await touch.locator('#entry-total').textContent(), '5');
+  assert.equal(await touch.locator('#chart').evaluate(el => getComputedStyle(el).touchAction), 'pan-y');
   await touchContext.close();
   console.log('PASS contact-time save, exactly once after release/touch/keyboard, upward number motion, reduced-motion suppression');
   const shiftImage = await readFile('assets/cutouts/ART-01_yaezakura.png');
@@ -253,9 +291,9 @@ try {
   assert.equal(await page.locator('.counter').first().evaluate(el => getComputedStyle(el).borderTopWidth), '1px');
   assert.ok(await page.locator('.counter').first().evaluate(el => parseFloat(getComputedStyle(el).borderRadius) <= 2));
   await page.locator('[data-chart="akarenga"]').click();
-  assert.equal(await page.locator('.bar').first().evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(183, 121, 112)');
+  assert.equal(await page.locator('.bar:not(.selected)').first().evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(183, 121, 112)');
   await page.locator('[data-chart="entry"]').click();
-  assert.equal(await page.locator('.bar').first().evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(120, 150, 138)');
+  assert.equal(await page.locator('.bar:not(.selected)').first().evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(120, 150, 138)');
   assert.equal(await page.locator('#chart-axis span').count(), 5);
   assert.equal(await page.locator('#chart-axis span').last().textContent(), '0');
   assert.equal(await page.locator('.count-tick').count(), 0);
@@ -273,6 +311,8 @@ try {
     }
     assert.equal(buttons[0].fontSize, buttons[1].fontSize, `equal plus font at ${width}px`);
     if (width >= 1024) {
+      const panel = await page.locator('.chart-panel').boundingBox(), ticks = await page.locator('.chart-labels').boundingBox();
+      assert.ok(ticks.y + ticks.height <= panel.y + panel.height, 'chart labels stay inside panel');
       assert.ok((await page.locator('[data-kind="entry"]').boundingBox()).y + (await page.locator('[data-kind="entry"]').boundingBox()).height < height);
       const menu = await page.locator('[data-open="shift-dialog"]').boundingBox(); assert.ok(menu.y + menu.height < height);
       const call = await page.locator('#call-top').boundingBox(); assert.ok(call.x + call.width <= width && call.y >= 0);
