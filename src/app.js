@@ -54,7 +54,7 @@ function render() {
   $('#chart').dataset.series = chartKind;
   $('#chart').style.gridTemplateColumns = chartBins.map(bin => `${bin.end - bin.start}fr`).join(' ');
   $('#chart').classList.toggle('show-values', interval >= 15);
-  const labelWidth = Math.max(18, String(Math.max(...chartBins.map(b => b[chartKind]))).length * 7 + 6);
+  const labelWidth = Math.max(12, String(Math.max(...chartBins.map(b => b[chartKind]))).length * 6 + 2);
   $('.chart-surface').style.minWidth = interval >= 15 ? `${28 + (chartEnd - chartStart) / Math.min(...chartBins.map(b => b.end - b.start)) * labelWidth}px` : '0';
   $('#chart').style.touchAction = interval >= 15 ? 'auto' : 'pan-y';
   $('#chart').replaceChildren(...chartBins.map(b => {
