@@ -1,6 +1,6 @@
 import { validate, mergeEvents, currentStaff, dayOf, summary } from './model.js';
 import { validatePredictions, mergePredictions } from './forecast.js';
-import { validateDayResults, mergeDayResults, assertFinalizedRecords, dayRecordIds, eventDays } from './event-days.js';
+import { validateDayResults, mergeDayResults, assertFinalizedRecords, dayRecordIds, eventDays, finishEvent } from './event-days.js';
 const dbName = 'entrance-counter-v1';
 export function openStore() {
   return new Promise((resolve, reject) => {
@@ -91,6 +91,21 @@ export function saveDayResult(db, operation) {
     };
     tx.oncomplete = () => resolve(next);
     tx.onerror = () => reject(failure || tx.error); tx.onabort = () => reject(failure || tx.error || Error('終了状態を保存できませんでした'));
+  });
+}
+export function finishAllDays(db, operation) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('state', 'readwrite'), store = tx.objectStore('state'), events = store.get('events'), results = store.get('day-results');
+    let next, failure;
+    results.onsuccess = () => {
+      try {
+        const counts = validate(events.result || []);
+        next = finishEvent(results.result || [], counts, { ...operation, staff:currentStaff(counts) });
+        store.put(next, 'day-results');
+      } catch (e) { failure = e; tx.abort(); }
+    };
+    tx.oncomplete = () => resolve(next);
+    tx.onerror = () => reject(failure || tx.error); tx.onabort = () => reject(failure || tx.error || Error('全日程の終了を保存できませんでした'));
   });
 }
 export function readPredictions(db) {

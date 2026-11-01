@@ -1,5 +1,5 @@
 import { labels, dayOf, timeOf, active, currentStaff, summary, csv, validate } from './model.js';
-import { openStore, read, write, readShift, writeShift, readPredictions, savePrediction, readDayResults, saveDayResult, readBackup } from './storage.js';
+import { openStore, read, write, readShift, writeShift, readPredictions, savePrediction, readDayResults, saveDayResult, readBackup, finishAllDays } from './storage.js';
 import { visitorForecast, validatePredictions, previousPredictions } from './forecast.js';
 import { eventDays, eventTotals, closedDay, dayRecordIds, validateDayResults } from './event-days.js';
 import { scheduleFor } from './schedule.js';
@@ -127,6 +127,8 @@ function renderDayResults() {
   $('#event-final-summary').textContent = `2日間の結果：入場 ${total.entry.toLocaleString('ja-JP')}人／赤煉瓦 ${total.akarenga.toLocaleString('ja-JP')}冊${closedDay(dayResults, eventDays[0]) ? '' : '（1日目は未確定）'}`;
   table('#day-result-history', ['日付', '操作', '担当者', '記録時刻'], dayResults.slice().reverse().map(r => [r.date, r.kind === 'close' ? '確定' : '確定解除', r.staff, stamp(r.at)]));
   $('#day-results-dialog [data-close]').disabled = resultBusy;
+  $('#finish-event').disabled = resultBusy || today < eventDays[1];
+  $('#finish-event').textContent = eventDays.every(date => closedDay(dayResults, date)) ? '全日程サマリーを見る' : '全日程終了・サマリー';
 }
 function renderPreviousDay() {
   const counts = summary(events, eventDays[0]).totals;
@@ -151,6 +153,20 @@ document.querySelectorAll('[data-finalize]').forEach(button => button.addEventLi
   finally { resultBusy = false; render(); }
 }));
 $('#day-results-dialog').addEventListener('cancel', event => { if (resultBusy) event.preventDefault(); });
+$('#finish-event').addEventListener('click', async () => {
+  if (resultBusy) return;
+  resultBusy = true; $('#day-results-status').textContent = '記録を確認しています…'; renderDayResults();
+  try {
+    await queue; const backup = await readBackup(db); events = backup.events; dayResults = backup.dayResults;
+    if (eventDays.every(date => closedDay(dayResults, date))) { location.assign('summary.html'); return; }
+    const total = eventTotals(events), expectedIds = Object.fromEntries(eventDays.map(date => [date, dayRecordIds(events, date)]));
+    if (await confirmAction(`全日程を終了してサマリーを表示しますか？ 2日間：入場 ${total.entry}人／赤煉瓦 ${total.akarenga}冊。未確定の日を確定し、追加・取消を停止します。受付画面から確定解除できます。`)) {
+      dayResults = await finishAllDays(db, { id:crypto.randomUUID(), expectedIds });
+      channel?.postMessage('day-results-updated'); location.assign('summary.html');
+    } else $('#day-results-status').textContent = '変更していません。';
+  } catch (e) { $('#day-results-status').textContent = `保存失敗：${e.message}`; }
+  finally { resultBusy = false; render(); }
+});
 function renderForecast() {
   const forecast = visitorForecast(events, new Date(), dayResults);
   if (!eventDays.includes(forecast.date)) $('#prediction-open').disabled = true;

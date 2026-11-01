@@ -37,3 +37,22 @@ export function assertFinalizedRecords(results, events) {
     if (JSON.stringify(ids) !== JSON.stringify(closed.ids) || totals.entry !== closed.totals.entry || totals.akarenga !== closed.totals.akarenga) throw Error(`${date}は確定済みです。先に確定を解除してください`);
   }
 }
+export function finishEvent(results, events, operation, now = new Date()) {
+  validateDayResults(results); assertFinalizedRecords(results, events);
+  if (dayOf(now) < eventDays[1]) throw Error('全日程を終了できるのは2日目以降です');
+  if (typeof operation.id !== 'string' || !operation.id || operation.id.length > 96) throw Error('終了記録IDが不正です');
+  const next = [...results];
+  for (const [index, date] of eventDays.entries()) {
+    const ids = dayRecordIds(events, date);
+    if (operation.expectedIds && JSON.stringify(operation.expectedIds[date]) !== JSON.stringify(ids)) throw Error('記録が更新されました。結果を確認してもう一度終了してください');
+    if (!closedDay(results, date)) next.push({ id: `${operation.id}:${index + 1}`, kind:'close', date, at:now.toISOString(), staff:operation.staff, totals:summary(events, date).totals, ids });
+  }
+  validateDayResults(next); assertFinalizedRecords(next, events); return next;
+}
+export function eventSummary(events, results) {
+  const days = eventDays.map(date => ({ date, totals:summary(events, date).totals, closed:closedDay(results, date) }));
+  const byDay = eventDays.map(date => summary(events, date, 30).bins);
+  const bins = byDay[0].map((bin, i) => ({ time:bin.time, entry:bin.entry + byDay[1][i].entry, akarenga:bin.akarenga + byDay[1][i].akarenga })).filter(bin => bin.time >= '09:00' && bin.time < '16:30');
+  const totals = eventTotals(events), outside = Object.fromEntries(['entry','akarenga'].map(kind => [kind, totals[kind] - bins.reduce((sum, bin) => sum + bin[kind], 0)]));
+  return { days, totals, bins, outside, complete:days.every(day => day.closed), recorded:events.length > 0 || results.length > 0 };
+}

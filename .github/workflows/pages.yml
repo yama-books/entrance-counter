@@ -31,7 +31,7 @@ jobs:
       - name: Prepare public app only
         run: |
           mkdir -p _site/assets
-          cp index.html styles.css minimal.css _site/
+          cp index.html styles.css minimal.css summary.html summary.css _site/
           cp -r src _site/
           cp -r assets/cutouts _site/assets/
           cp -r assets/fonts _site/assets/
