@@ -449,6 +449,37 @@ try {
   assert.ok(await rc.evaluate(async()=>{const s=await import('/src/storage.js'),db=await s.openStore(),before=await s.readDayResults(db),events=await s.read(db);await s.write(db,{type:'restore',events});const same=JSON.stringify(before)===JSON.stringify(await s.readDayResults(db));db.close();return same;}));
   await restoredClosingContext.close();await closingContext.close();
   console.log('PASS v1 to v2 data retention/old-version rejection, close failure/retry, backend add/cancel/restore locks, unlock/reclose history, prior day display, second-day cumulative counters and forecast, paired-color 2-day chart, count-vs-close race, atomic snapshot backup and closed-state restore');
+  const summaryContext = await browser.newContext({ viewport:{width:1024,height:768} }), sp = await summaryContext.newPage();
+  await sp.clock.setFixedTime(new Date('2026-11-01T17:00:00+09:00')); await sp.goto(url+'/summary.html');
+  await sp.waitForFunction(()=>document.documentElement.dataset.ready==='true');
+  assert.ok((await sp.locator('#report-status').textContent()).includes('記録がありません')); assert.equal(await sp.locator('#report-entry-value').textContent(),'—');
+  await sp.locator('a[href="./"]').click(); await sp.waitForFunction(()=>!document.querySelector('#forecast-top').disabled);
+  await sp.evaluate(async()=>{
+    const s=await import('/src/storage.js'),db=await s.openStore(),events=[];let id=0;
+    for(const [date,time,entry,brick] of [['2026-10-31','10:00',2,1],['2026-10-31','21:00',1,0],['2026-11-01','10:00',3,2]])for(const [kind,count] of [['entry',entry],['akarenga',brick]])for(let i=0;i<count;i++)events.push({id:`summary-${id++}`,kind,at:`${date}T${time}:00+09:00`,staff:'架空集計担当'});
+    await s.write(db,{type:'restore',events});db.close();
+  });
+  await sp.reload(); await sp.waitForFunction(()=>!document.querySelector('#forecast-top').disabled);
+  await sp.locator('[data-open="day-results-dialog"]').click();
+  await sp.evaluate(()=>{const put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(...args){IDBObjectStore.prototype.put=put;throw new DOMException('Test end-all failure','QuotaExceededError');};});
+  await sp.locator('#finish-event').click();await sp.locator('#confirm-yes').click();await sp.waitForFunction(()=>document.querySelector('#day-results-status').textContent.includes('保存失敗'));
+  assert.equal(await sp.evaluate(async()=>{const s=await import('/src/storage.js'),db=await s.openStore();const n=(await s.readDayResults(db)).length;db.close();return n;}),0);
+  assert.ok(!sp.url().endsWith('summary.html'));
+  await sp.locator('#finish-event').click();await sp.locator('#confirm-yes').click();await sp.waitForURL('**/summary.html');await sp.waitForFunction(()=>document.documentElement.dataset.ready==='true');
+  assert.equal(await sp.locator('#report-entry-value').textContent(),'6');assert.equal(await sp.locator('#report-akarenga-value').textContent(),'3');
+  assert.ok((await sp.locator('#report-status').textContent()).includes('全日程終了'));
+  assert.equal(await sp.locator('#report-days tr').count(),2);assert.equal(await sp.locator('#entry-bars .bar').count(),15);assert.equal(await sp.locator('#akarenga-bars .bar').count(),15);
+  assert.ok((await sp.locator('#report-outside').textContent()).includes('入場 1人'));
+  for(const [width,height] of [[1194,834],[1024,768]]){await sp.setViewportSize({width,height});assert.ok(await sp.evaluate(()=>document.documentElement.scrollWidth<=innerWidth&&document.documentElement.scrollHeight<=innerHeight+1),'summary fits one landscape screen');}
+  await sp.screenshot({path:'test-results/final-summary.png'});
+  await sp.emulateMedia({media:'print'});assert.equal(await sp.locator('nav').evaluate(el=>getComputedStyle(el).display),'none');assert.equal(await sp.locator('#report-entry-value').textContent(),'6');await sp.emulateMedia({media:'screen'});
+  await sp.setViewportSize({width:390,height:844});assert.ok(await sp.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await sp.locator('a[href="./"]').click();await sp.waitForFunction(()=>!document.querySelector('#forecast-top').disabled);assert.equal(await sp.locator('[data-kind="entry"]').isDisabled(),true);
+  await sp.locator('[data-open="day-results-dialog"]').click();await sp.locator('#finish-event').click();await sp.waitForURL('**/summary.html');await sp.waitForFunction(()=>document.documentElement.dataset.ready==='true');
+  const summaryMeta=await sp.evaluate(async()=>{const s=await import('/src/storage.js'),db=await s.openStore(),before=await s.readDayResults(db);await s.saveDayResult(db,{id:'summary-reopen',kind:'reopen',date:'2026-10-31'});db.close();return before.length;});assert.equal(summaryMeta,2);
+  await sp.reload();await sp.waitForFunction(()=>document.documentElement.dataset.ready==='true');assert.ok((await sp.locator('#report-status').textContent()).includes('途中集計'));assert.equal(await sp.locator('#report-entry-value').textContent(),'6');
+  await summaryContext.close();
+  console.log('PASS end-all atomic failure/retry and same-tab summary navigation, independent 2-day charts, daily/overall/out-of-hours reconciliation, one-screen landscape/phone/print layout, reopen status and idempotent read-only viewing');
   // Theme picker: five palettes, choice persists on the device.
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'ivory-brick');
   assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), 'rgb(250, 250, 246)');
